@@ -33,8 +33,7 @@ def figcard(fn, head, cap):
             f'<figcaption>{cap}</figcaption></figure>')
 
 
-TABS = ('<div class="tabs"><a href="index.html">Electrode count</a>'
-        '<a href="design.html" class="active">Chosen design</a></div>')
+TABS = ('<div class="tabs"><a href="index.html" class="active">Chosen design</a><a href="electrode-count.html">Electrode count</a></div>')
 
 # ---- the multi-event verdict, computed not asserted ----
 K = S["k_events"]
@@ -70,7 +69,11 @@ mot_rows = "\n".join(
 HTML = f"""<!doctype html>
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<link rel="icon" type="image/svg+xml" href="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIzMiIgaGVpZ2h0PSIzMiIgdmlld0JveD0iMCAwIDMyIDMyIj4KICA8cmVjdCB3aWR0aD0iMzIiIGhlaWdodD0iMzIiIHJ4PSI3IiBmaWxsPSIjMTIyNjJiIi8+CiAgPGNpcmNsZSBjeD0iMTYiIGN5PSIxNiIgcj0iMTAiIGZpbGw9Im5vbmUiIHN0cm9rZT0iIzFmOGE5YyIgc3Ryb2tlLXdpZHRoPSIyLjYiLz4KICA8Y2lyY2xlIGN4PSIxNiIgY3k9IjE2IiByPSI1IiBmaWxsPSIjNGE5ZWZmIi8+Cjwvc3ZnPgo=">
+<link rel="icon" href="favicon.ico" sizes="any">
+<link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png">
+<link rel="icon" type="image/png" sizes="16x16" href="favicon-16.png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="icon" type="image/svg+xml" href="favicon.svg">
 <title>The chosen design, characterized end to end</title>
 <meta property="og:title" content="Directional reflux sensor: the chosen design">
 <meta property="og:description" content="End-to-end characterization of the locked configuration: ROC, motion, grade, and a direct test of whether multi-event detection compounds.">
@@ -253,8 +256,15 @@ python build_design_site.py     # this page</pre>
 </main>
 </body></html>"""
 
-open("design.html", "w").write(HTML)
-print(f"wrote design.html ({len(HTML)//1024} KB)  "
+open("index.html", "w").write(HTML)
+# keep the previously shared /design.html URL alive
+open("design.html", "w").write(
+    '<!doctype html><meta charset="utf-8">'
+    '<meta http-equiv="refresh" content="0; url=index.html">'
+    '<link rel="canonical" href="index.html">'
+    '<title>Redirecting</title>'
+    '<p>This page has moved to <a href="index.html">index.html</a>.</p>')
+print(f"wrote index.html (+design.html redirect) ({len(HTML)//1024} KB)  "
       f"AUC@{TARGET:.2f}={num(OP[str(TARGET)]['auc'])}  "
       f">={BK}of{K}: sens {pct(SENS)} spec {pct(SPEC)}  "
       f"never-detected={pct(never_frac)}")

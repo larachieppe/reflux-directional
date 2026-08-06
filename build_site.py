@@ -152,7 +152,11 @@ span_rows = "\n".join(
 HTML = f"""<!doctype html>
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<link rel="icon" type="image/svg+xml" href="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIzMiIgaGVpZ2h0PSIzMiIgdmlld0JveD0iMCAwIDMyIDMyIj4KICA8cmVjdCB3aWR0aD0iMzIiIGhlaWdodD0iMzIiIHJ4PSI3IiBmaWxsPSIjMTIyNjJiIi8+CiAgPGNpcmNsZSBjeD0iMTYiIGN5PSIxNiIgcj0iMTAiIGZpbGw9Im5vbmUiIHN0cm9rZT0iIzFmOGE5YyIgc3Ryb2tlLXdpZHRoPSIyLjYiLz4KICA8Y2lyY2xlIGN4PSIxNiIgY3k9IjE2IiByPSI1IiBmaWxsPSIjNGE5ZWZmIi8+Cjwvc3ZnPgo=">
+<link rel="icon" href="favicon.ico" sizes="any">
+<link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png">
+<link rel="icon" type="image/png" sizes="16x16" href="favicon-16.png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="icon" type="image/svg+xml" href="favicon.svg">
 <title>Directional bioimpedance: how many electrodes?</title>
 <meta property="og:title" content="Directional bioimpedance reflux sensing">
 <meta property="og:description" content="A non-tomographic, direction-first simulation. Electrode count swept to find the functionality/complexity knee.">
@@ -174,7 +178,7 @@ HTML = f"""<!doctype html>
   </div>
 </aside>
 <main>
-  <div class="tabs"><a href="index.html" class="active">Electrode count</a><a href="design.html">Chosen design</a></div>
+  <div class="tabs"><a href="index.html">Chosen design</a><a href="electrode-count.html" class="active">Electrode count</a></div>
 
   <header id="overview">
     <div class="kicker">Pre-hardware simulation &#183; formulation 2</div>
@@ -438,6 +442,6 @@ python build_site.py               # this page</pre>
 </main>
 </body></html>"""
 
-open("index.html", "w").write(HTML)
-print(f"wrote index.html ({len(HTML)//1024} KB)  recommended N={REC} "
+open("electrode-count.html", "w").write(HTML)
+print(f"wrote electrode-count.html ({len(HTML)//1024} KB)  recommended N={REC} "
       f"(best N={BEST_N}, acc {pct(best_acc)})")
