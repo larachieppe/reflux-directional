@@ -194,6 +194,7 @@ HTML = f"""<!doctype html>
     <div class="bench">
       <span>Kite EIT, still <b>73%</b></span>
       <span>Kite EIT, moving <b>44%</b></span>
+      <span>this model, still <b>{pct(g(REC,'0.0','dir_acc'))}</b></span>
       <span>this model, moving <b>{pct(g(REC,WORST,'dir_acc'))}</b></span>
     </div>
     <p class="subtle" style="margin-top:14px">Motion is injected as a <b>common-mode</b> body
@@ -272,8 +273,14 @@ HTML = f"""<!doctype html>
       ranks the counts differently and favours <b>N={REC}</b>. Among counts not significantly worse
       on direction, N={REC} is best on laterality. {2*REC} channels.</p></div>
     </div>
-    {figcard("figC_complexity.png", "Where the curve stops paying",
-             "Accuracy under the worst motion against total channel count. Channels are the cost axis: parts, contact points, prep time, failure modes.")}
+    {figcard("figC_complexity.png", "Why N was chosen",
+             "Direction and laterality plotted together against channel count at the worst motion. They rank the counts differently, which is the whole reason the choice is not simply the top of one curve.")}
+    <div class="note"><b>On the N=8 dip.</b> The curve is not monotonic: N=8 sits below both its
+    neighbours at the highest motion. With 96 trials the 95% interval on that point is roughly
+    &#177;10 points, so it overlaps N=6, N=10 and N=12 and should be read as noise around a broadly
+    flat region rather than a real optimum at N=10 or 12. The one difference that survives the
+    intervals is that <b>N=5 and N=6 beat N&#8805;8</b>, not the fine structure among the larger
+    counts.</div>
   </section>
 
   <section id="motion">

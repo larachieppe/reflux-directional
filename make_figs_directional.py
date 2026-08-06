@@ -79,10 +79,15 @@ plt.close(fig); print("[A] count sweep (with CIs)")
 
 # ---------------------------------------------------- B. motion robustness
 fig, ax = plt.subplots(figsize=(8.4, 4.6))
-cols = plt.cm.viridis(np.linspace(0.1, 0.85, len(COUNTS)))
-for n, c in zip(COUNTS, cols):
+# Only plot counts that HAVE data. N=4 is undefined at every motion level (one
+# zone, no ordering), so including it in the legend promises a curve that cannot
+# exist and leaves the legend claiming more series than are drawn.
+PLOT_N = [n for n in COUNTS if any(g(n, m, "dir_acc") == g(n, m, "dir_acc") for m in MOTION)]
+cols = plt.cm.viridis(np.linspace(0.1, 0.85, len(PLOT_N)))
+for n, c in zip(PLOT_N, cols):
     ax.plot(MOTION, [100 * g(n, m, "dir_acc") for m in MOTION], "o-",
             color=c, lw=2, ms=6, label=f"N={n}")
+ax.plot([], [], " ", label="N=4: undefined")
 ax.axhline(73, ls="--", color=C3, lw=1.6)
 ax.axhline(44, ls="--", color=C3, lw=1.6)
 ax.fill_between([min(MOTION), max(MOTION)], 44, 73, color=C3, alpha=.07)
@@ -96,30 +101,34 @@ ax.set_ylim(30, 103); ax.legend(fontsize=9, ncol=2); _fin(ax)
 fig.tight_layout(); fig.savefig("figs_dir/figB_motion.png", bbox_inches="tight")
 plt.close(fig); print("[B] motion")
 
-# ---------------------------------------------------- C. functionality vs complexity
+# ---------------------------------------------------- C. why the chosen N
 worst = max(MOTION)
-fig, ax = plt.subplots(figsize=(8.4, 4.6))
-ch = [2 * n for n in COUNTS]
-acc = [100 * g(n, worst, "dir_acc") for n in COUNTS]
-ax.plot(ch, acc, "o-", color=ACCENT, lw=2.4, ms=9)
-for n, x, y in zip(COUNTS, ch, acc):
-    ax.annotate(f"N={n}", (x, y), textcoords="offset points", xytext=(0, 11),
-                ha="center", fontsize=10, color=INK)
-valid = [(n, a) for n, a in zip(COUNTS, acc) if not np.isnan(a)]
-if valid:
-    best = max(a for _, a in valid)
-    knee = min((n for n, a in valid if a >= best - 2.0), default=None)
-    if knee is not None:
-        ki = COUNTS.index(knee)
-        ax.axvline(ch[ki], color=C1, ls="--", lw=1.8)
-        ax.text(ch[ki] + 0.5, min(acc) + 3, f"knee: N={knee}\n{2*knee} channels\nwithin 2 pts of best",
-                color=C1, fontsize=10)
+fig, ax = plt.subplots(figsize=(9.0, 4.8))
+PLOT_N = [n for n in COUNTS if g(n, worst, "dir_acc") == g(n, worst, "dir_acc")]
+ch = [2 * n for n in PLOT_N]
+dirv = [100 * g(n, worst, "dir_acc") for n in PLOT_N]
+latv = [100 * g(n, worst, "lat_acc") for n in PLOT_N]
+ax.plot(ch, dirv, "o-", color=ACCENT, lw=2.4, ms=9, label="direction accuracy")
+ax.plot(ch, latv, "s--", color=C1, lw=2.4, ms=8, label="laterality accuracy")
+for n, x, y in zip(PLOT_N, ch, dirv):
+    ax.annotate(f"N={n}", (x, y), textcoords="offset points", xytext=(0, -16),
+                ha="center", fontsize=9.5, color=MUT)
+# the recommendation: best laterality among counts not significantly worse on direction
+best = max(dirv)
+ok = [(n, x, d, l) for n, x, d, l in zip(PLOT_N, ch, dirv, latv)]
+lo = min(wilson(best/100, dn(PLOT_N[int(np.argmax(dirv))], worst))[0]*100, best)
+cand = [t for t in ok if wilson(t[2]/100, dn(t[0], worst))[1]*100 >= lo]
+rec = max(cand, key=lambda t: t[3]) if cand else ok[0]
+ax.axvline(rec[1], color=C2, ls="--", lw=2)
+ax.annotate(f"chosen: N={rec[0]}\nbest laterality ({rec[3]:.0f}%) among counts\nnot significantly worse on direction",
+            (rec[1], min(min(dirv), min(latv)) + 2), textcoords="offset points",
+            xytext=(10, 0), fontsize=9.5, color=C2, va="bottom")
 ax.set_xlabel("total channels (2 strips x N)   ->   complexity, cost, contact points")
-ax.set_ylabel(f"direction accuracy (%) at {worst:.1f} cm motion")
-ax.set_title("Functionality vs complexity: where the curve stops paying")
-_fin(ax)
+ax.set_ylabel(f"accuracy (%) at {worst:.1f} cm motion")
+ax.set_title("Why N was chosen: direction and laterality rank the counts differently")
+ax.legend(fontsize=9.5, loc="upper center"); _fin(ax)
 fig.tight_layout(); fig.savefig("figs_dir/figC_complexity.png", bbox_inches="tight")
-plt.close(fig); print("[C] complexity")
+plt.close(fig); print("[C] chosen-N rationale")
 
 # ---------------------------------------------------- D. AUC + ablation
 fig, axs = plt.subplots(1, 2, figsize=(11, 4.3))

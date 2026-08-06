@@ -227,9 +227,18 @@ def bolus_path(world, anat, label, grade, side, T):
 
 
 def simulate_trial(world, label, rng, grade=3, side=+1, T=16, freqs=FREQS,
-                   snr_db=60.0, motion_amp=0.0, amp=1.0):
-    """Return Z tensor (T, F, n_zones) complex, baseline-subtracted + noisy."""
-    anat = draw_anatomy(world, rng)
+                   snr_db=60.0, motion_amp=0.0, amp=1.0, anat=None):
+    """Return Z tensor (T, F, n_zones) complex, baseline-subtracted + noisy.
+
+    `anat` may be supplied to hold the body and electrode placement FIXED across
+    several events on the same subject. That distinction matters: the multi-event
+    argument for beating VCUG assumes repeated events are independent, and they
+    are only independent to the extent that anatomy and placement are not the
+    thing limiting the measurement. Passing a fixed anat lets that assumption be
+    tested rather than asserted.
+    """
+    if anat is None:
+        anat = draw_anatomy(world, rng)
     disp = draw_motion(world, rng, T, motion_amp)
     zc_t = draw_contact_z(world, rng, T, motion_amp)
     cs, frac = bolus_path(world, anat, label, grade, side, T)
