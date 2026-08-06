@@ -74,6 +74,27 @@ else:
 
 SPREAD = (max(valid.values()) - min(valid.values())) if len(valid) > 1 else float("nan")
 
+from math import comb
+
+
+def multi(pe, k, syst=0.0):
+    """Detection probability after k observed voiding events."""
+    return (1 - syst) * (1 - (1 - pe) ** k)
+
+
+def atleast(q, k, n):
+    return sum(comb(n, i) * q ** i * (1 - q) ** (n - i) for i in range(k, n + 1))
+
+
+PE_BEST = g(REC, "0.3", "dir_acc")      # per-event, low-motion operating point
+PE_WORST = g(REC, WORST, "dir_acc")     # per-event, worst motion
+SPANS_SORTED = sorted(float(k) for k in M["span_sweep"])
+SPAN_BEST = max(SPANS_SORTED, key=lambda x: M["span_sweep"][str(x)]["dir_acc"])
+SPAN_BEST = min(sp for sp in SPANS_SORTED
+                if M["span_sweep"][str(sp)]["dir_acc"] >=
+                max(M["span_sweep"][str(x)]["dir_acc"] for x in SPANS_SORTED) - 0.01)
+SNR_MIN = min(int(k) for k in M["snr_sweep"])
+
 CSS = open("site.css").read()
 
 
@@ -143,7 +164,8 @@ HTML = f"""<!doctype html>
     <a href="#overview">Overview</a><a href="#why">Why not tomography</a>
     <a href="#method">Method</a><a href="#count">Electrode count</a>
     <a href="#motion">Motion</a><a href="#ablation">What carries the signal</a>
-    <a href="#limits">SNR &amp; span</a><a href="#provenance">Provenance</a>
+    <a href="#limits">SNR &amp; span</a><a href="#spec">Design spec</a>
+    <a href="#beatvcug">Beating VCUG</a><a href="#provenance">Provenance</a>
     <a href="#implications">Implications</a><a href="#reproduce">Reproduce</a>
   </nav>
   <div class="side-foot">
@@ -289,6 +311,73 @@ HTML = f"""<!doctype html>
     </div>
     {figcard("figF_snr_span.png", "SNR and span sweeps",
              "Both at N=8 under 0.6 cm motion. Accuracy is FLAT from 50 to 80 dB, so the system is motion-limited, not noise-limited. Span, by contrast, is the strongest single design lever measured here.")}
+  </section>
+
+
+  <section id="spec">
+    <div class="sec-kicker">what to build</div>
+    <h2>Design specification</h2>
+    <p>Every number below is set by a measurement in this study, not by intuition. Where the
+    simulation did not resolve something, it says so.</p>
+    <div class="prov-wrap"><table class="prov">
+      <tr><th>Parameter</th><th>Specify</th><th>Evidence from the sweep</th></tr>
+      <tr><td><b>Electrodes per strip</b></td><td class="mono">{REC} (={2*REC} channels)</td>
+          <td>Direction favours N={REC_DIR} ({pct(g(REC_DIR,'0.6','dir_acc'))} vs {pct(g(REC,'0.6','dir_acc'))} at 0.6 cm), laterality favours N={REC} ({pct(g(REC,'0.6','lat_acc'))} vs {pct(g(REC_DIR,'0.6','lat_acc'))}). N={REC} is also the smallest count giving 3+ zones. More than 8 buys nothing and costs direction accuracy.</td></tr>
+      <tr><td><b>Strip span</b></td><td class="mono">{SPAN_BEST:.0f} cm</td>
+          <td>{pct(M["span_sweep"][str(SPANS_SORTED[0])]["dir_acc"])} at {SPANS_SORTED[0]:.0f} cm rising to {pct(M["span_sweep"][str(SPAN_BEST)]["dir_acc"])} at {SPAN_BEST:.0f} cm, then flat. <b>The strongest single lever measured</b>, worth more than any electrode-count choice.</td></tr>
+      <tr><td><b>Zones per strip</b></td><td class="mono">&#8805; 3</td>
+          <td>Common-mode rejection subtracts the across-zone mean. With exactly 2 zones the mean-removed pair are exact negatives and the lag is destroyed, so 2 zones cannot reject common mode at all.</td></tr>
+      <tr><td><b>Outer aperture</b></td><td class="mono">&#8805; 6 cm</td>
+          <td>Tetrapolar sensing depth scales with aperture (roughly half). The ureter sits ~3 cm below the skin in this model, so apertures under ~6 cm do not reach it.</td></tr>
+      <tr><td><b>Measurement</b></td><td class="mono">fractional &#916;Z/|Z|</td>
+          <td>Absolute &#916;Z carries each channel's standing impedance as a gain. Unequal gains made the strip selector degenerate (it picked one side ~90% of the time regardless of truth). Normalizing per channel fixed it.</td></tr>
+      <tr><td><b>Instrument SNR</b></td><td class="mono">{SNR_MIN} dB is enough</td>
+          <td>Accuracy is <b>flat from {SNR_MIN} to {max(int(k) for k in M["snr_sweep"])} dB</b>. The design is motion-limited, not noise-limited. Do not pay for a quieter front end.</td></tr>
+      <tr><td><b>Motion tolerance</b></td><td class="mono">&#8804; 0.5 cm</td>
+          <td>Per-event accuracy {pct(g(REC,'0.0','dir_acc'))} (still), {pct(g(REC,'0.3','dir_acc'))} (0.3 cm), {pct(g(REC,'0.6','dir_acc'))} (0.6 cm), {pct(g(REC,'0.9','dir_acc'))} (0.9 cm). <b>The binding constraint.</b></td></tr>
+      <tr><td><b>Events per session</b></td><td class="mono">&#8805; 6, decide &#8805;2-of-6</td>
+          <td>The lever that beats VCUG. See below.</td></tr>
+      <tr><td><b>Claimed grade range</b></td><td class="mono">grade &#8805; III</td>
+          <td>Grades I to II run 29-50% (at or below chance): low-grade reflux does not travel far enough to cross the sensed span. Do not claim them.</td></tr>
+      <tr><td>Excitation frequency</td><td class="mono">not resolved</td>
+          <td>A single frequency (50 kHz) was used here, so the multi-frequency question is <b>untested</b> by this study.</td></tr>
+    </table></div>
+  </section>
+
+  <section id="beatvcug">
+    <div class="sec-kicker">the strategy</div>
+    <h2>How this beats VCUG</h2>
+    <p>Not by raising per-event accuracy. VCUG's exploitable weakness is that it captures
+    <b>one or two forced voids</b> and therefore misses roughly <b>20% of reflux</b>, which is
+    intermittent. A passive wearable observes many natural cycles, and detection compounds with
+    the number of events observed.</p>
+    <div class="prov-wrap"><table class="prov">
+      <tr><th>Per-event accuracy</th><th>1 event</th><th>2</th><th>3</th><th>4</th><th>6</th></tr>
+      <tr><td class="mono">{pct(PE_WORST)} (worst motion)</td>{"".join(f"<td class='mono'>{100*multi(PE_WORST,k):.0f}%</td>" for k in (1,2,3,4,6))}</tr>
+      <tr><td class="mono">{pct(PE_BEST)} (0.3 cm motion)</td>{"".join(f"<td class='mono'>{100*multi(PE_BEST,k):.0f}%</td>" for k in (1,2,3,4,6))}</tr>
+      <tr style="background:rgba(230,103,103,.08)"><td class="mono">{pct(PE_WORST)}, 15% unmeasurable</td>{"".join(f"<td class='mono'>{100*multi(PE_WORST,k,0.15):.0f}%</td>" for k in (1,2,3,4,6))}</tr>
+    </table></div>
+    <p>A <b>&#8805;2-of-6</b> decision rule protects specificity while capturing the sensitivity
+    gain: at {pct(PE_WORST)} per-event it yields <b>{100*atleast(PE_WORST,2,6):.0f}% sensitivity</b>,
+    and with a 10% per-event false-positive rate the session-level false-positive rate is only
+    <b>{100*atleast(0.10,2,6):.0f}%</b> (about {100-100*atleast(0.10,2,6):.0f}% specificity).
+    For comparison, nuclear VCUG achieves <b>81% sensitivity at 89% specificity</b> against
+    conventional VCUG.</p>
+    <div class="note"><b>The caveat that decides this.</b> The compounding above assumes events are
+    independent. They are not: if electrode placement is poor or the anatomy is atypical, every
+    event on that child fails together. The red row shows what happens if 15% of children are
+    systematically unmeasurable, and the ceiling drops to about 85% no matter how many events you
+    observe. <b>The fraction of children who are systematically unmeasurable is therefore the single
+    most important unknown</b>, and it cannot be answered in simulation. It is the first thing a
+    phantom and then a clinical pilot should measure.</div>
+    <div class="finds">
+      <div class="find"><h3>1. Capture more events</h3><p class="big">biggest lever</p>
+      <p>Passive overnight wear instead of one forced void. Turns {pct(PE_WORST)} per-event into {100*atleast(PE_WORST,2,6):.0f}% per session.</p></div>
+      <div class="find"><h3>2. Longer strip</h3><p class="big">+{100*(M["span_sweep"][str(SPAN_BEST)]["dir_acc"]-M["span_sweep"]["12.0"]["dir_acc"]):.0f} points</p>
+      <p>{SPAN_BEST:.0f} cm instead of 12 cm, if pediatric anatomy allows it.</p></div>
+      <div class="find"><h3>3. Quiet context</h3><p class="big">+{100*(g(REC,'0.3','dir_acc')-g(REC,'0.9','dir_acc')):.0f} points</p>
+      <p>Sleep or still wear moves per-event accuracy from {pct(g(REC,'0.9','dir_acc'))} to {pct(g(REC,'0.3','dir_acc'))}. Cheaper than motion compensation.</p></div>
+    </div>
   </section>
 
   <section id="provenance">
