@@ -440,6 +440,45 @@ python build_site.py               # this page</pre>
     across electrode counts. Total runtime {M.get('runtime_min',0):.0f} min.</p>
   </section>
 </main>
+
+<style>
+ .nav a.here{{color:var(--accent) !important;border-left:2px solid var(--accent);
+             padding-left:8px;margin-left:-10px}}
+</style>
+<script>
+(function(){{
+  var links = Array.prototype.slice.call(document.querySelectorAll('.nav a[href^="#"]'));
+  if(!links.length) return;
+  var secs = links.map(function(a){{
+    return {{a:a, el:document.getElementById(a.getAttribute('href').slice(1))}};
+  }}).filter(function(s){{ return s.el; }});
+  if(!secs.length) return;
+  function top(el){{ return el.getBoundingClientRect().top + window.pageYOffset; }}
+  function mark(){{
+    // the section whose top is closest to (but not far past) the reading line
+    var line = window.scrollY + window.innerHeight*0.28, cur = secs[0];
+    for(var i=0;i<secs.length;i++){{
+      if(top(secs[i].el) <= line) cur = secs[i];
+    }}
+    // at the very bottom, select the last section so the final item can highlight
+    if(window.innerHeight + window.scrollY >= document.body.scrollHeight - 4){{
+      cur = secs[secs.length-1];
+    }}
+    for(var j=0;j<secs.length;j++){{
+      secs[j].a.classList.toggle('here', secs[j]===cur);
+    }}
+  }}
+  var tick=false;
+  function onScroll(){{
+    if(tick) return; tick=true;
+    requestAnimationFrame(function(){{ mark(); tick=false; }});
+  }}
+  window.addEventListener('scroll', onScroll, {{passive:true}});
+  window.addEventListener('resize', onScroll, {{passive:true}});
+  window.addEventListener('hashchange', function(){{ setTimeout(mark, 0); }});
+  mark();
+}})();
+</script>
 </body></html>"""
 
 open("electrode-count.html", "w").write(HTML)
