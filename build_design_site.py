@@ -70,6 +70,7 @@ mot_rows = "\n".join(
 HTML = f"""<!doctype html>
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIzMiIgaGVpZ2h0PSIzMiIgdmlld0JveD0iMCAwIDMyIDMyIj4KICA8cmVjdCB3aWR0aD0iMzIiIGhlaWdodD0iMzIiIHJ4PSI3IiBmaWxsPSIjMTIyNjJiIi8+CiAgPGNpcmNsZSBjeD0iMTYiIGN5PSIxNiIgcj0iMTAiIGZpbGw9Im5vbmUiIHN0cm9rZT0iIzFmOGE5YyIgc3Ryb2tlLXdpZHRoPSIyLjYiLz4KICA8Y2lyY2xlIGN4PSIxNiIgY3k9IjE2IiByPSI1IiBmaWxsPSIjNGE5ZWZmIi8+Cjwvc3ZnPgo=">
 <title>The chosen design, characterized end to end</title>
 <meta property="og:title" content="Directional reflux sensor: the chosen design">
 <meta property="og:description" content="End-to-end characterization of the locked configuration: ROC, motion, grade, and a direct test of whether multi-event detection compounds.">
