@@ -52,30 +52,46 @@ def _fin(ax):
 
 
 # ---------------------------------------------------- A. count sweep (headline)
-fig, ax = plt.subplots(figsize=(8.8, 4.8))
-for m in MOTION:
-    xs, ys, lo, hi = [], [], [], []
-    for n in COUNTS:
-        a = g(n, m, "dir_acc")
-        if a != a:
-            continue
-        l, h = wilson(a, dn(n, m))
-        xs.append(n); ys.append(100 * a); lo.append(100 * (a - l)); hi.append(100 * (h - a))
-    if xs:
-        ax.errorbar(xs, ys, yerr=[lo, hi], fmt="o-", color=MCOL[m], lw=2.2, ms=6,
-                    capsize=3, elinewidth=1.2,
-                    label=f"motion {m:.1f} cm" + (" (still)" if m == 0 else ""))
-ax.axhline(50, ls=":", color=MUT)
-ax.text(COUNTS[0], 51.5, "chance", color=MUT, fontsize=10)
-ax.axvspan(3.6, 4.4, color=C3, alpha=.09)
-ax.text(4, 88, "N=4\n1 zone\ndirection\nundefined", ha="center", fontsize=9, color=C3)
-ax.set_xlabel("electrodes per strip (N)")
-ax.set_ylabel("direction accuracy, grade >= III (%)")
-ax.set_title(f"Direction accuracy vs electrode count (span {SPAN:.0f} cm, Wilson 95% CI)")
-ax.set_xticks(COUNTS); ax.set_ylim(35, 105); ax.legend(fontsize=9.5, loc="lower right")
-_fin(ax)
-fig.tight_layout(); fig.savefig("figs_dir/figA_count.png", bbox_inches="tight")
-plt.close(fig); print("[A] count sweep (with CIs)")
+# TWO panels, because a single number here is misleading. dir_acc counts an
+# ABSTENTION as a wrong answer, and the abstain gate requires >= 3 zones, so N=5
+# (2 zones) is structurally exempt from it. Judging on dir_acc alone therefore
+# rewards the one configuration that is forced to guess.
+fig, axs = plt.subplots(1, 2, figsize=(12.6, 4.8), sharey=True)
+for ax, key, ttl in (
+        (axs[0], "dir_acc", "Abstention counted as an error"),
+        (axs[1], "dir_acc_decided", "Accuracy on the calls actually made")):
+    for m in MOTION:
+        xs, ys, lo, hi = [], [], [], []
+        for n in COUNTS:
+            a = g(n, m, "dir_acc")
+            v = prim[str(n)][str(m)].get(key, float("nan"))
+            if a != a or v != v:
+                continue
+            nn = int(prim[str(n)][str(m)].get(
+                "n_decided" if key == "dir_acc_decided" else "dir_n", 0))
+            l, h = wilson(v, nn)
+            xs.append(n); ys.append(100 * v)
+            lo.append(max(0.0, 100 * (v - l))); hi.append(max(0.0, 100 * (h - v)))
+        if xs:
+            ax.errorbar(xs, ys, yerr=[lo, hi], fmt="o-", color=MCOL[m], lw=2.2,
+                        ms=6, capsize=3, elinewidth=1.2,
+                        label=f"motion {m:.1f} cm" + (" (still)" if m == 0 else ""))
+    ax.axhline(50, ls=":", color=MUT)
+    ax.axvspan(3.6, 4.4, color=C3, alpha=.09)
+    ax.axvspan(4.6, 5.4, color=C2, alpha=.10)
+    ax.set_xlabel("electrodes per strip (N)")
+    ax.set_xticks(COUNTS); ax.set_ylim(35, 105); _fin(ax)
+    ax.set_title(ttl, fontsize=11.5)
+axs[0].set_ylabel("direction accuracy, grade >= III (%)")
+axs[0].text(4, 88, "N=4\nundefined", ha="center", fontsize=8.5, color=C3)
+axs[0].text(5, 40, "N=5: 2 zones,\nexempt from the\nabstain gate", ha="center",
+            fontsize=8.5, color=C2)
+axs[1].legend(fontsize=9, loc="lower right")
+fig.suptitle(f"Direction accuracy vs electrode count (span {SPAN:.0f} cm, Wilson 95% CI)",
+             fontsize=12.5, fontweight="bold")
+fig.tight_layout(rect=[0, 0, 1, 0.93])
+fig.savefig("figs_dir/figA_count.png", bbox_inches="tight")
+plt.close(fig); print("[A] count sweep (both views)")
 
 # ---------------------------------------------------- B. motion robustness
 fig, ax = plt.subplots(figsize=(8.4, 4.6))

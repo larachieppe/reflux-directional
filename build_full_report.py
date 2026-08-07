@@ -44,12 +44,18 @@ def img(path, cap, width=700):
 
 
 # ---- tables ----
+def _dec(n, m, k):
+    return EP[str(n)][str(m)].get(k, float("nan"))
+
+
 rows_count = "\n".join(
-    f"<tr{' class=hi' if n == 8 else ''}><td>N = {n}</td><td>{2*n}</td>"
-    f"<td>{p0(ed(OLD_E,n,0.0))} &rarr; <b>{p0(ed(E,n,0.0))}</b></td>"
-    f"<td>{p0(ed(OLD_E,n,0.3))} &rarr; <b>{p0(ed(E,n,0.3))}</b></td>"
-    f"<td>{p0(OLD_E['primary'][str(n)]['0.6']['lat_acc'])} &rarr; "
-    f"<b>{p0(EP[str(n)]['0.6']['lat_acc'])}</b></td></tr>" for n in ECOUNTS)
+    f"<tr{' class=hi' if n == 8 else (' class=bad' if n == 5 else '')}>"
+    f"<td>N = {n}</td><td>{2*n}</td>"
+    f"<td>{p0(ed(E,n,0.3))}</td>"
+    f"<td>{p0(ed(E,n,0.6))}</td>"
+    f"<td><b>{p0(_dec(n,0.6,'dir_acc_decided'))}</b></td>"
+    f"<td>{p0(_dec(n,0.6,'abstain_rate'))}</td>"
+    f"<td>{p0(EP[str(n)]['0.6']['lat_acc'])}</td></tr>" for n in ECOUNTS)
 
 rows_design = "\n".join(
     f"<tr><td>{m:.2f} cm</td>"
@@ -95,6 +101,7 @@ DEFECTS = [
  ("z_center never forwarded","physics","StripWorld accepted it but never passed it to place_strips.","Every strip in every study sat on the torso midpoint by default. Caused the 'grades I-II are undetectable' claim."),
  ("Electrodes sharing boundary facets","physics","A fixed z window exceeded half-pitch at N=12.","44 shared facets welded electrodes together; that array was not physically realizable."),
  ("Noise added to a normalized quantity","model","Derived from raw |Z| but added to fractional dZ.","Injected noise depended on the choice of length unit and sat ~10 dB low."),
+ ("Abstention scored as a wrong answer","stats","dir_acc penalised abstention, but the abstain gate needs >=3 zones, so N=5 was structurally exempt from it.","Made N=5 appear to beat N=8 under motion (79% vs 71%). On calls actually made, N=8 leads 93% to 79%. Same failure mode as defect 9: a pooled metric flattering the wrong option."),
 ]
 rows_def = "\n".join(
     f"<tr><td>{i+1}</td><td><b>{t}</b></td><td>{c}</td><td>{w}</td><td>{e}</td></tr>"
@@ -150,9 +157,21 @@ symmetry, so the geometry is a longitudinal strip, one per flank, which also giv
 {img("figs_dir/figG_mechanism.png","The mechanism. Reflux: the impedance dip climbs the strip and arrival time rises with height. Antegrade: the mirror image. The SIGN of that slope is the diagnosis.")}
 
 <h2>2. Study 1: how many electrodes</h2>
-<p>Direction accuracy at grade &ge; III, shown as <i>pre-fix &rarr; corrected</i>.</p>
-<table><tr><th>Config</th><th>Channels</th><th>Still</th><th>0.3 cm motion</th><th>Laterality @0.6</th></tr>
+<p>Direction accuracy at grade &ge; III. Two accuracy columns are shown at 0.6 cm because a
+single one is misleading: the raw figure counts an <b>abstention</b> as a wrong answer, while the
+abstain gate requires at least three zones, so N=5 (two zones) is <b>structurally exempt</b> from
+it. Judged on the raw column alone, the only configuration that cannot decline to answer looks the
+most robust.</p>
+<table><tr><th>Config</th><th>Channels</th><th>Raw @0.3</th><th>Raw @0.6</th>
+<th>On calls made @0.6</th><th>Abstained @0.6</th><th>Laterality @0.6</th></tr>
 {rows_count}</table>
+<div class="warn"><b>Claim overturned #4.</b> An earlier version of this report showed N=5
+outperforming N=8 under motion (79% against 71% at 0.6 cm). That was an artifact of the metric, not
+a property of the design. On the calls actually made, <b>N=8 leads 93% to 79%</b>, and it declines
+to answer on 24% of cases rather than guessing. N=5 also cannot perform common-mode rejection at
+all, because mean removal across exactly two zones makes them exact negatives. N=5 has neither the
+gate nor the rejection: it is the configuration that <i>cannot fail to answer</i>, which reads as
+robustness and is the opposite.</div>
 <div class="warn"><b>Claim overturned #1.</b> An earlier version of this report stated that
 <i>more electrodes made accuracy worse</i>. That was an artifact of a greedy aperture-selection
 rule, not physics. Forcing each aperture on identical data showed the selector losing at every
