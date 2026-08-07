@@ -320,15 +320,28 @@ accuracy.</div>
 <i>asserted</i> rather than demonstrated. Four checks were run. They need no patient data and no
 new physics, and they are the first thing a numerical analyst asks for.</p>
 
-<h3>7.1 Reciprocity: passes at machine precision</h3>
+<h3>7.1 Reciprocity: passes at machine precision, and what that is worth</h3>
 <p>Maxwell reciprocity requires the transfer impedance to be unchanged when the drive pair and the
-sense pair are exchanged. It is a strong, assumption-free test: the drive enters through the
-electrode current constraint and the sense through a potential difference, so the two solves
-exercise different rows of the system, and any asymmetry in the assembly, the contact-impedance
-Robin term or the gauge condition shows up at once.</p>
+sense pair are exchanged. Exchanging them exercises different rows of the assembled system, so an
+asymmetry in the assembly, the contact-impedance Robin term or the gauge condition shows up at
+once.</p>
 <div class="key">Maximum relative error <b>{VF['v2_reciprocity']['max_rel_error']:.2e}</b> over
-{VF['v2_reciprocity']['n_pairs']} tetrapolar zones &mdash; machine precision. The discretised
-forward operator is correct.</div>
+{VF['v2_reciprocity']['n_pairs']} tetrapolar zones &mdash; machine precision.</div>
+<div class="warn"><b>Do not oversell this, as an earlier draft of this report did.</b> The CEM
+system matrix is <b>complex symmetric by construction</b>: the stiffness and electrode mass
+matrices are symmetric, the coupling block is inserted once as <code>B</code> and once as
+<code>B<sup>T</sup></code> from the same array, and the gauge row and column are the same vector of
+ones. Reciprocity is therefore an <i>algebraic identity</i> for an exact solve, and
+{VF['v2_reciprocity']['max_rel_error']:.1e} is essentially the condition-scaled residual of the
+sparse LU.</div>
+<p>That still makes it worth running. It would immediately catch a transposed or mis-signed
+coupling block, a non-symmetric quadrature on the electrode mass matrix, an inconsistent
+<code>1/z<sub>l</sub></code> between the two blocks, or a broken gauge row, and it confirms the
+direct solve is numerically clean. But it is <b>necessary, not sufficient</b>: any error that
+enters <i>symmetrically</i> &mdash; a wrong Robin coefficient applied consistently to both blocks,
+a wrong electrode area, a mis-meshed geometry, a wrong tissue value &mdash; passes this test
+untouched. This report previously called it an assumption-free validation of the forward operator.
+It is not, and the difference matters.</p>
 
 <h3>7.2 Mesh convergence: the impedance does not converge, but the decision does</h3>
 <p>An identical, deterministic, <b>noiseless</b> trial solved on five meshes spanning an eightfold
@@ -405,6 +418,25 @@ reflux is a <b>placement</b> problem. A long mid-torso strip spreads its zones o
 the low-grade bolus never travels, and no amount of repeat observation recovers a child whose
 strip never covered the relevant segment. Repeat voids only help when failure is independent
 across voids, and placement failure is precisely the kind that is not.</p>
+<h3>8.1 The most likely artifact, tested and ruled out</h3>
+<p>A result this load-bearing deserves an attempt to break it. The most plausible way "10 cm beats
+16 cm" could be an <i>estimator</i> artifact rather than physics is lag-window saturation:
+<code>xcorr_lag</code> clips the inter-zone lag search at <code>max_lag = 2T/3</code>. If true lags
+saturated that bound on the long strip but not the short one, the slope fit would be biased in
+exactly the direction of the published conclusion.</p>
+<table><tr><th>Configuration</th><th>grade I</th><th>grade II</th><th>grade III</th><th>grade IV</th>
+<th>at clip</th></tr>
+<tr><td>16 cm mid-torso &mdash; mean |lag|</td><td>1.01</td><td>0.72</td><td>1.37</td><td>1.62</td><td>0%</td></tr>
+<tr class="hi"><td>10 cm over the UVJ &mdash; mean |lag|</td><td>1.87</td><td>1.98</td><td>1.84</td><td>1.57</td><td>0%</td></tr></table>
+<p class="cap">Inter-zone lag in frames, against a clip boundary of 13 frames at T = 20.</p>
+<div class="key"><b>Refuted.</b> The largest lag observed anywhere was 3.13 frames against a bound
+of 13, and <b>0% of lags sat at or near the clip</b> in either configuration. The conclusion is not
+a lag-window artifact.</div>
+<p>The check also <i>supports</i> the mechanism. The 10 cm strip shows <b>larger</b> lags than the
+16 cm strip at every low grade, which is what a genuine traverse looks like: the short strip sits
+where the bolus actually travels, while the long mid-torso strip spreads its zones over anatomy the
+low-grade bolus barely reaches, so its zones see a weak and nearly simultaneous perturbation. That
+is the same mechanism Study 3 measured by counting zone crossings, arriving here independently.</p>
 <div class="note"><b>Do not over-read the individual cells.</b> With 48 children per cell the
 confidence intervals are wide, and the 16 cm arm is non-monotonic in &sigma; (75%, 67%, 88%, 83%),
 which is not physically sensible and indicates large per-cell noise. The <i>never-detected</i> gap

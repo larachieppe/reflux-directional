@@ -1,0 +1,40 @@
+VERIFICATION (verify_forward.py -> metrics_verify.json), all NEW:
+ V2 reciprocity: max relative error 4.77e-15 across 12 tetrapolar zones -> PASSES at machine precision.
+ V3 mesh convergence, 5 levels from 704 to 5675 nodes:
+    nodes=  704  |Z|=0.3261 (err vs finest 21.2%)  slope=+1.536 (err 6.80%)  decision=1
+    nodes= 1235  |Z|=0.4737 (err vs finest 76.0%)  slope=+1.479 (err 2.84%)  decision=1
+    nodes= 2261  |Z|=0.3024 (err vs finest 12.4%)  slope=+1.452 (err 0.97%)  decision=1
+    nodes= 3717  |Z|=0.2383 (err vs finest 11.4%)  slope=+1.437 (err 0.11%)  decision=1
+    nodes= 5675  |Z|=0.2691 (err vs finest 0.0%)  slope=+1.438 (err 0.00%)  decision=1
+    -> |Z| does NOT converge monotonically (11-76% error, oscillating).
+    -> the arrival-time SLOPE does converge monotonically: 6.8, 2.8, 0.97, 0.11, 0 %.
+    -> the DECISION is invariant across all 5 meshes (8x node range).
+ V4 contact-impedance immunity over the modelled z0 range U(5,20):
+    tetrapolar relative spread 0.1621 vs bipolar 0.7031 -> rejection factor only 4.3x
+ V1 quasi-statics: EQS valid everywhere (skin depth/L = 6-54, L/free-space-wavelength ~ 6.7e-5),
+    BUT omega*eps/sigma reaches 1.40 for kidney at 100 kHz, so displacement current EXCEEDS
+    conduction current there; a real-conductivity model would be wrong, complex admittivity is required.
+
+STUDY 6 NON-RIGID RESPIRATORY MOTION (metrics_motion2.json), all NEW:
+ mean over amplitudes, by gradient: grad 0.0: false-retro 15.8% dir_acc 71.9%; grad 0.5: false-retro 12.8% dir_acc 74.4%; grad 1.0: false-retro 14.4% dir_acc 79.4%; 
+ -> THE GRADIENT HYPOTHESIS IS REFUTED. No gradient penalty; the full-gradient arm is if
+    anything slightly BETTER. The predicted false travelling wave did not materialise.
+ by amplitude (raw acc / acc on calls made / abstain), grad=1.0:
+    0.0 cm: raw 100.0%  decided 100.0%  abstain 0.0%
+    0.5 cm: raw 100.0%  decided 100.0%  abstain 0.0%
+    1.0 cm: raw 91.7%  decided 97.1%  abstain 5.6%
+    2.0 cm: raw 58.3%  decided 84.0%  abstain 30.6%
+    3.0 cm: raw 47.2%  decided 68.0%  abstain 30.6%
+ -> amplitude, NOT gradient, is what degrades it, and the failure mode is SAFE:
+    the estimator abstains more rather than inverting. Accuracy on calls made stays 62-69% at 3 cm.
+ -> false-retrograde on empty windows is 11.1% even at ZERO motion: an intrinsic floor.
+
+STUDY 5 PLACEMENT PRECISION (metrics_precision.json), all NEW:
+    10cm sigma=0.0: sens 96% spec 83% never-detected 0% low-grade-never 0%
+    10cm sigma=0.5: sens 83% spec 75% never-detected 0% low-grade-never 0%
+    10cm sigma=1.0: sens 71% spec 79% never-detected 4% low-grade-never 7%
+    10cm sigma=2.0: sens 67% spec 75% never-detected 8% low-grade-never 14%
+    16cm sigma=0.0: sens 75% spec 83% never-detected 25% low-grade-never 43%
+    16cm sigma=0.5: sens 67% spec 88% never-detected 33% low-grade-never 57%
+    16cm sigma=1.0: sens 88% spec 79% never-detected 12% low-grade-never 21%
+    16cm sigma=2.0: sens 83% spec 67% never-detected 17% low-grade-never 21%

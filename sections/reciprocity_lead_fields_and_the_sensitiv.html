@@ -1,0 +1,944 @@
+<h3>Reciprocity, lead fields, and the sensitivity of a flank tetrapolar array</h3>
+
+<p>Everything this device claims to measure is a <em>differential</em> quantity: not the impedance of a
+flank, but the way a small conductive perturbation reweights the transfer impedance of one tetrapolar
+zone relative to its neighbours, and the order in which it does so. That makes the sensitivity
+distribution, meaning where in the body a zone actually looks, with what sign, and how fast that falls
+off with depth, the single most load-bearing piece of physics in the project. This section derives it,
+computes it for the array geometry the code actually builds, and states plainly which of the resulting
+numbers are supported by the simulation and which are analytic estimates that the simulation has never
+been asked to confirm.</p>
+
+<p>Three things must be said at the outset, because they change what the rest of the section is allowed
+to conclude.</p>
+
+<ol>
+<li><b>An earlier draft of this section was built on the wrong aperture.</b> It quoted depth reach, bolus
+excursion and noise margin for the widest tetrapolar aperture, <code>G = 7</code>. At the array size the
+studies actually run, <code>G = 7</code> contributes <em>nothing</em> to the decision: it yields one zone
+per strip, and <code>_strip_aperture_stats</code> returns <code>None</code> for any aperture with fewer
+than two zones. Every reach number below has been recomputed for <code>G = 5</code>, the deepest aperture
+the estimator can use. See §3.</li>
+<li><b>The estimator does not read the raw zone sensitivity.</b> It reads the across-zone mean-subtracted
+series. That projection is not a small correction: it removes roughly two thirds of the excursion at
+<code>G = 5</code> and it <em>guarantees</em> sign reversal between inner and outer zones at the target
+depth, with no shallow-lobe or motion argument required. See §6.</li>
+<li><b>The estimator is not sign-agnostic.</b> An earlier draft asserted that it "uses only timing, never
+sign or amplitude". Both halves of that are false against the code. See §6.</li>
+</ol>
+
+<h4>1. The discrete forward operator, and what reciprocity does and does not prove</h4>
+
+<p>The forward problem solved in <code>eit3d.CEM3D</code> is the electro-quasi-static (EQS) boundary-value
+problem with the Complete Electrode Model of Somersalo, Cheney and Isaacson. In the interior Ω,</p>
+
+<p style="margin-left:1.5em">(1)  ∇·(κ ∇u) = 0,   
+κ(x,ω) = σ(x) + jωε(x)</p>
+
+<p>with, on each electrode <code>E<sub>l</sub></code> of contact impedance <code>z<sub>l</sub></code>,</p>
+
+<p style="margin-left:1.5em">(2)  u + z<sub>l</sub> κ ∂u/∂n = U<sub>l</sub>  on E<sub>l</sub>;  
+κ ∂u/∂n = 0 off the electrodes;  
+∫<sub>E<sub>l</sub></sub> κ ∂u/∂n dS = I<sub>l</sub></p>
+
+<p>and the gauge Σ<sub>l</sub> U<sub>l</sub> = 0. The complex admittivity is not decoration. V1
+measured ωε/σ = 1.40 for kidney and 0.39 for muscle at 100 kHz: displacement current
+<em>exceeds</em> conduction current in perfused tissue at the top of the band, so a real-conductivity
+model would be quantitatively wrong. EQS validity itself rests on the skin-depth condition
+(δ/L = 6 to 54) and on the domain being electrically small against the <em>free-space</em>
+wavelength (L/λ<sub>0</sub> = 6.7×10<sup>−5</sup>); testing L against the in-medium
+wavelength would merely restate the skin-depth test, since λ = 2πδ in a good conductor.</p>
+
+<p><code>_assemble</code> discretises (1) and (2) with P1 tetrahedra into the augmented system</p>
+
+<p style="margin-left:1.5em">(3)  
+A = [[K + Σ<sub>l</sub> M<sub>l</sub>/z<sub>l</sub>,  B,  0],
+[B<sup>T</sup>,  C,  <b>1</b>],
+[0,  <b>1</b><sup>T</sup>,  0]],  
+B<sub>:,l</sub> = −c<sub>l</sub>/z<sub>l</sub>,  
+C<sub>ll</sub> = |E<sub>l</sub>|/z<sub>l</sub></p>
+
+<p>where <code>M<sub>l</sub></code> is the electrode boundary mass matrix, <code>c<sub>l</sub></code> the
+electrode load vector (<code>c<sub>l,i</sub> = ∫<sub>E<sub>l</sub></sub> φ<sub>i</sub> dS</code>),
+<code>|E<sub>l</sub>| = c<sub>l</sub>·<b>1</b></code> the realised electrode area (stored as
+<code>self.area</code>), and the final row and column implement the gauge through a Lagrange multiplier
+γ.</p>
+
+<p>Reciprocity now follows structurally. <code>A</code> is <em>complex symmetric</em> by construction:
+<code>K</code> and every <code>M<sub>l</sub></code> are symmetric, <code>B</code> is inserted once as
+<code>B</code> and once as <code>B.T</code> from the same array, <code>C</code> is diagonal, and the gauge
+column and row are the same vector of ones. Since <code>A = A<sup>T</sup></code>, the discrete transfer
+impedance <code>Z<sub>(ab),(pq)</sub> = (e<sub>p</sub>−e<sub>q</sub>)<sup>T</sup>
+A<sup>−1</sup>(e<sub>a</sub>−e<sub>b</sub>)</code> is symmetric under exchange of the drive and
+sense pairs. V2 measured that exchange over 12 tetrapolar zones and found a maximum relative error of
+<b>4.77×10<sup>−15</sup></b>.</p>
+
+<div class="mm-warn">
+<p><b>Do not oversell V2.</b> Because <code>A</code> is exactly symmetric as coded, reciprocity is an
+algebraic identity for an exact solve, and 4.77×10<sup>−15</sup> is essentially the
+condition-number-scaled residual of the sparse LU. V2 is a real check: it would immediately catch a
+transposed or mis-signed <code>B</code>, a non-symmetric quadrature on <code>M<sub>l</sub></code>, an
+inconsistent <code>1/z<sub>l</sub></code> between <code>B</code> and <code>C</code>, or a broken gauge
+row, and it confirms the direct solver is numerically clean. It is <em>not</em> an assumption-free
+validation of the physics. An error that enters symmetrically, such as a wrong Robin coefficient applied
+consistently to both blocks, a wrong electrode area, a mis-meshed geometry or a wrong tissue value,
+passes V2 untouched. Reciprocity is necessary, not sufficient. The project has no phantom and no
+analytic-solution benchmark, which is what would actually close this gap. A sphere or layered-half-space
+case with a closed form is the cheapest way to get one, and it has not been run. The report's phrase
+"assumption-free validation of the discretised forward operator" should be narrowed to "assumption-free
+validation of the <em>symmetry</em> of the discretised forward operator and of the solve".</p>
+</div>
+
+<p>γ is worth one more line, because it carries the contact-impedance argument in §4. Test the
+top block row with the constant vector <b>1</b>: <code>K<b>1</b> = 0</code> and
+<code>M<sub>l</sub><b>1</b> = c<sub>l</sub></code>, so <code><b>1</b><sup>T</sup></code>(top) gives
+<code>Σ<sub>l</sub>[(c<sub>l</sub>·u) − |E<sub>l</sub>|U<sub>l</sub>]/z<sub>l</sub> = 0</code>.
+Summing the electrode rows gives the same expression with opposite sign plus <code>Lγ =
+Σ<sub>l</sub> I<sub>l</sub></code>. Every drive built in <code>solve_drives</code> sets
+<code>rhs[N+a] = +amp</code> and <code>rhs[N+b] = −amp</code>, so ΣI<sub>l</sub> = 0 and
+<b>γ ≡ 0</b>. This is a hand derivation from <code>_assemble</code>; it has not been checked
+numerically, though it is a one-line assertion to add to <code>verify_forward.py</code>.</p>
+
+<h4>2. The Geselowitz sensitivity relation</h4>
+
+<p>Let <code>u<sub>d</sub></code> solve (1) and (2) for current <code>I<sub>d</sub></code> driven on
+electrodes (a,b), and <code>u<sub>s</sub></code> solve the <em>reciprocal</em> problem, a hypothetical
+current <code>I<sub>s</sub></code> driven on the sense pair (p,q). Perturb the admittivity by
+Δκ. Subtracting the weak forms of the perturbed and unperturbed problems and using the
+symmetry established above gives, to first order in Δκ,</p>
+
+<p style="margin-left:1.5em">(4)  
+ΔZ = − ∫<sub>Ω</sub> Δκ(r)  
+[∇u<sub>d</sub>(r)/I<sub>d</sub>] · [∇u<sub>s</sub>(r)/I<sub>s</sub>]   dV
+ ≡  − ∫<sub>Ω</sub> Δκ(r) S(r) dV</p>
+
+<p>where <code>S(r)</code> is the sensitivity distribution. Sign convention matters and is easy to get
+wrong, so it is stated explicitly: define the <em>lead field</em>
+<code>E<sub>d</sub> = −∇u<sub>d</sub>/I<sub>d</sub></code> (an electric field per unit
+current, units Ω·m<sup>−1</sup>) and likewise <code>E<sub>s</sub></code>. Then
+<code>S = E<sub>d</sub>·E<sub>s</sub> = (∇u<sub>d</sub>/I<sub>d</sub>)·(∇u<sub>s</sub>/I<sub>s</sub>)</code>,
+units Ω<sup>2</sup>·m<sup>−2</sup>, and <code>S</code> is invariant under flipping the
+sign convention on both fields. The symmetry of (4) under d↔s <em>is</em> Maxwell reciprocity; V2 is
+the discrete measurement of it.</p>
+
+<div class="mm-warn">
+<p><b>Dimensional correction to the form quoted in the project brief.</b> The relation is often written
+ΔZ = −∫ Δσ (J<sub>d</sub>·J<sub>s</sub>)/(I<sub>d</sub>I<sub>s</sub>) dV.
+As written that is dimensionally inconsistent. <code>J/I</code> has units m<sup>−2</sup>, so
+Δσ [S·m<sup>−1</sup>] × m<sup>−4</sup> =
+S·m<sup>−5</sup>, and after ×dV [m<sup>3</sup>] the integral carries
+S·m<sup>−2</sup>, not Ω. (An earlier draft of this box said the integral carried S; that
+was itself wrong, and is corrected here.) The consistent current-density form carries the background
+admittivity explicitly,</p>
+<p style="margin-left:1.5em">(5)  
+ΔZ = − ∫ (Δκ/κ<sup>2</sup>)  
+[J<sub>d</sub>/I<sub>d</sub>] · [J<sub>s</sub>/I<sub>s</sub>]   dV,  
+(m/S)·m<sup>−4</sup>·m<sup>3</sup> = Ω ✓</p>
+<p>which reduces to (4) since J = κ∇u in a locally isotropic medium. (5) and (4) are the
+<em>same</em> equation under a change of variable, so the 1/κ<sup>2</sup> is bookkeeping, not a
+mechanism, and an earlier draft was wrong to say "the 1/κ<sup>2</sup> is why the fat shell is
+disproportionately sensitive". The correct argument is interface continuity: the <em>normal</em> component
+of J is continuous across the fat/muscle boundary while <code>E = J/κ</code> is not, so where current
+crosses the shell rather than running along it, <code>E</code> in the fat is about
+σ<sub>muscle</sub>/σ<sub>fat</sub> = 0.34/0.043 = 7.9× the muscle value and
+<code>S</code>, being bilinear in two such fields, is elevated by up to
+7.9<sup>2</sup> ≈ 62×. That factor is an analytic expectation only. <b>Every number in
+§5 to §8 comes from a <em>homogeneous</em> half-space at σ = 0.34 S/m, which contains no
+fat shell and therefore cannot exhibit this effect at all.</b> A two-layer half-space Green's function is
+the cheap way to quantify it and has not been computed.</p>
+</div>
+
+<p>Three properties of (4) are used below, each exact within the linearisation:</p>
+<ol>
+<li><b>Bilinearity in the two lead fields.</b> Anything that perturbs <em>either</em> field perturbs the
+measurement, whether or not it perturbs the tissue. This is the whole of §4.</li>
+<li><b>The integrand is signed.</b> <code>S(r) < 0</code> wherever the drive and sense lead fields are
+antiparallel. This is §5, and its projected version in §6 is the more important one.</li>
+<li><b>Locality is set by geometry, not by the amplifier.</b> <code>S</code> falls off as a high power of
+depth; how high depends on electrode separation. This is §7.</li>
+</ol>
+
+<h4>2.1 What the real-part projection actually retains</h4>
+
+<p><code>zone_series</code> reads <code>dZ.real.mean(axis=1)</code>, the real part of a complex
+ΔZ averaged over the two frequencies, and <code>simulate_trial</code> forms
+<code>dZ = (Z − base)/np.abs(base)</code>. The division is by the <em>magnitude</em> of the
+reference, not by the complex reference, so the phase of <code>Z<sub>ref</sub></code> is <em>not</em>
+removed. In a homogeneous proxy where Z ∝ 1/κ, (4) gives
+ΔZ ≈ −Z(Δκ/κ)g with g real and positive, so
+arg ΔZ = arg Δκ − 2 arg κ and the retained fraction of
+the fractional excursion is</p>
+
+<p style="margin-left:1.5em">(6)  
+η = |cos(arg Δκ − 2 arg κ)|</p>
+
+<p>not |cos(arg Δκ − arg κ)|. An earlier draft used the latter and
+quoted 96.6% and 89.1%; those are the correct answers to the wrong normalisation convention. Recomputed
+from <code>admittivity()</code>:</p>
+
+<table class="mm-t">
+<tr><th>background</th><th>f</th><th>ωε/σ</th><th>arg κ</th><th>arg Δκ (urine bolus)</th><th>arg ΔZ</th><th>η retained</th></tr>
+<tr><td>muscle</td><td>50 kHz</td><td>0.213</td><td>+12.01°</td><td>−3.03°</td><td>−27.05°</td><td><b>89.1%</b></td></tr>
+<tr><td>muscle</td><td>100 kHz</td><td>0.392</td><td>+21.42°</td><td>−5.58°</td><td>−48.42°</td><td><b>66.4%</b></td></tr>
+<tr><td>kidney</td><td>50 kHz</td><td>0.759</td><td>+37.18°</td><td>−3.00°</td><td>−77.36°</td><td>21.9%</td></tr>
+<tr><td>kidney</td><td>100 kHz</td><td>1.399</td><td>+54.44°</td><td>−5.51°</td><td>−114.4°</td><td><b>−41.3% (inverted)</b></td></tr>
+</table>
+
+<p>Note that arg Δκ is <em>negative</em>: a urine bolus raises σ but <em>lowers</em>
+permittivity (ε<sub>r</sub> 80 against muscle 2.6×10<sup>4</sup>), so the perturbation is
+slightly capacitively subtractive. Three consequences:</p>
+
+<ul>
+<li>The 100 kHz channel loses a third of its excursion, not a tenth. Combining the two channels, the
+frequency average retains (0.891 + 0.664)/2 = 0.777 of the magnitude excursion while reducing independent
+noise by √2, a net SNR gain of only <b>1.10×</b>. So the two-frequency average is very far
+from a √2 = 1.41× gain, and is close to buying nothing at all. That is a real design finding
+and it is the corrected version of a claim the earlier draft made for the wrong reason (a 96.6/89.1 split
+would have been a 4% effect not worth mentioning).</li>
+<li>The <em>inversion</em> margin at 100 kHz in muscle is 90° − 48.4° = <b>41.6°</b>, not
+the roughly 79° the earlier draft implied. η changes sign when
+2 arg κ > 90° + arg Δκ, i.e. when
+ωε/σ > 0.91.</li>
+<li>For a homogeneous <em>kidney</em> background at 100 kHz, ωε/σ = 1.40 and the
+projection <b>inverts</b>: the real part of the fractional change reports the opposite sign. Whether any
+zone in the real model is kidney-dominated is not established; the design that Study 5 endorses sits low
+over the ureterovesical junction, far from the kidney, and the actual background is graded rather than
+homogeneous, so (6) is a proxy and not a model output.</li>
+</ul>
+
+<p>A <em>uniform</em> rotation applied to every zone of a strip is harmless for the decision: cross
+correlation of (−a, −b) equals that of (a, b), so a global inversion changes no lag. The
+danger is a <em>differential</em> rotation, one zone sitting over tissue with a materially different
+arg κ from its neighbours, because that flips <em>relative</em> sign between zones, and
+§6 shows relative sign is exactly what this estimator cannot survive.</p>
+
+<div class="mm-warn">
+<p>The homogeneous Z ∝ 1/κ step behind (6) is a proxy. The actual model has muscle, a fat
+shell, kidney, bladder wall and a urine lumen in the sensed volume, and its zone reference impedance is
+not simply 1/κ of any one tissue. <b>This project has not computed arg Z<sub>ref</sub> per
+zone from the FEM, which is a one-line diagnostic on data the solver already returns.</b> Until it is,
+η is an order-of-magnitude statement, and the possibility that a kidney-adjacent zone reports an
+inverted real part at 100 kHz is a live hypothesis rather than a finding.</p>
+</div>
+
+<h4>3. Which apertures the estimator can actually use: G = 7 is structurally dead</h4>
+
+<p>This subsection exists because an earlier draft of this section, and the depth argument built on it,
+were quantitatively wrong. The chain in the code is short and unambiguous.</p>
+
+<ol>
+<li><code>tetrapolar_zones</code> emits, for each odd outer gap <code>G</code> in
+<code>range(3, N, 2)</code>, exactly <code>N − G</code> zones per strip.</li>
+<li>At the studies' array size <code>N_STRIP = 8</code> that is 5 zones at G=3, 3 zones at G=5 and
+<b>1 zone at G=7</b> (9 per strip, 18 in total).</li>
+<li><code>_strip_aperture_stats</code> opens with <code>nz = ser.shape[0]</code> and
+<code>if nz < 2: return None</code>.</li>
+<li><code>direction_features</code> keeps only <code>c is not None</code>.</li>
+</ol>
+
+<p>So <b>G = 7 is silently discarded on every trial</b>, and the deepest aperture that reaches the
+decision is <b>G = 5</b>. Its drive separation is AB = 5a: <b>11.43 cm</b> on the 16 cm strip and
+<b>7.14 cm</b> on the 10 cm strip, not 16 and 10 cm. Every reach number in §7 and §8 has been
+recomputed on that basis.</p>
+
+<table class="mm-t">
+<tr><th>strip</th><th>pitch a</th><th>G</th><th>AB = Ga</th><th>zones per strip (N−G)</th><th>lever arm (N−G−1)a</th><th>used by estimator?</th></tr>
+<tr><td>16 cm</td><td>2.286 cm</td><td>3</td><td>6.86 cm</td><td>5</td><td>9.14 cm</td><td>yes</td></tr>
+<tr><td>16 cm</td><td>2.286 cm</td><td>5</td><td>11.43 cm</td><td>3</td><td>4.57 cm</td><td>yes</td></tr>
+<tr><td>16 cm</td><td>2.286 cm</td><td>7</td><td>16.00 cm</td><td>1</td><td>0.00 cm</td><td><b>no (nz < 2)</b></td></tr>
+<tr><td>10 cm</td><td>1.429 cm</td><td>3</td><td>4.29 cm</td><td>5</td><td>5.71 cm</td><td>yes</td></tr>
+<tr><td>10 cm</td><td>1.429 cm</td><td>5</td><td>7.14 cm</td><td>3</td><td>2.86 cm</td><td>yes</td></tr>
+<tr><td>10 cm</td><td>1.429 cm</td><td>7</td><td>10.00 cm</td><td>1</td><td>0.00 cm</td><td><b>no (nz < 2)</b></td></tr>
+</table>
+
+<p>The lever arm column is derived, not imported. Because <code>tetrapolar_zones</code> always places the
+sense pair <em>adjacent</em> at <code>(k+c, k+c+1)</code> with <code>c = (G−1)/2</code>, the zone
+centroid is at electrode index <code>k + G/2</code> and therefore advances by exactly one pitch per zone
+<em>regardless of G</em>. With <code>N − G</code> zones the axial baseline available to the
+arrival-time regression is</p>
+
+<p style="margin-left:1.5em">(7)  
+L<sub>lever</sub> = (N − G − 1) a</p>
+
+<p>which vanishes identically at G = N − 1. The competition between depth reach and slope precision
+is therefore not a gentle trade-off on a fixed span, it <em>terminates</em> the widest aperture outright.
+An earlier draft argued this point using figures imported from <code>direction_features</code>'
+docstring, which describe a <em>different array</em> (span 12 cm, N = 12, pitch 1.09 cm, so the 9.8 cm
+aperture has a 2.18 cm baseline and the 3.3 cm aperture 8.7 cm). Those numbers are correct for that array
+and were being applied to the N = 8, 16 cm and 10 cm arrays under discussion. Equation (7) is the
+statement that actually applies here.</p>
+
+<div class="mm-warn">
+<p>Because G = 7 is structurally unusable at N = 8, the sweep never tested the design the section's
+earlier draft was recommending. <b>Whether a deep aperture would help at all is untested</b>, and the
+test is cheap: run <code>N_STRIP = 10</code> or 12 on the 10 cm span, at which G = 7 yields 3 or 5 zones
+and enters the fusion. That sweep does not exist in this repository.</p>
+</div>
+
+<h4>4. Why tetrapolar sensing suppresses contact impedance, and why the rejection is only 4.3×</h4>
+
+<p>The intuitive argument is that the sense electrodes carry no current, so no <code>I·z</code>
+drop develops across their contact layer. In this model that argument is exactly true, and the
+consequence is stronger than usually stated. For a sense electrode <code>l</code> the electrode row of
+(3) with <code>I<sub>l</sub> = 0</code> and γ = 0 (§1) reads</p>
+
+<p style="margin-left:1.5em">(8)  
+−(c<sub>l</sub>·u)/z<sub>l</sub> + (|E<sub>l</sub>|/z<sub>l</sub>) U<sub>l</sub> = 0
+  ⇒   U<sub>l</sub> = (c<sub>l</sub>·u)/|E<sub>l</sub>|</p>
+
+<p>The <code>1/z<sub>l</sub></code> cancels identically. The sensed potential is the area-weighted mean
+of the boundary potential under the electrode footprint, with <b>no explicit dependence on the sense
+electrode's contact impedance at all</b>. The simulated voltmeter has infinite input impedance and
+perfect common-mode rejection ratio by construction.</p>
+
+<p>And yet V4 measured a residual tetrapolar spread of <b>0.1621</b> over
+<code>z<sub>0</sub> ∈ [5, 20]</code> Ω·cm<sup>2</sup> against a bipolar spread of
+<b>0.7031</b>, a rejection factor of only <b>4.34×</b>. Since the explicit dependence is provably
+zero, every part of that 16% residual is <em>implicit</em>: it enters through <code>u</code> itself.
+Equation (4) names the mechanism precisely. Contact impedance does not appear in the sensitivity
+integrand, but it appears in <em>both lead fields</em>:</p>
+
+<ul>
+<li><b>Drive-side current redistribution.</b> The Robin term <code>M<sub>l</sub>/z<sub>l</sub></code>
+controls how strongly the drive electrode behaves as an equipotential. At small <code>z<sub>0</sub></code>
+the electrode is nearly a perfect conductor and the current density crowds towards its rim (the classic
+edge singularity); at large <code>z<sub>0</sub></code> the current density becomes nearly uniform over the
+footprint. Those are physically different sources, so <code>E<sub>d</sub></code> differs,
+<code>S(r)</code> differs, and ΔZ differs, even with the sense electrodes ideal.</li>
+<li><b>Sense-side shunting.</b> Zero <em>net</em> current does not mean zero <em>local</em> current. A
+sense electrode with finite <code>z<sub>l</sub></code> is a partially conducting patch welded to the skin;
+it sinks current on one part of its footprint and sources it on another, netting zero. That circulating
+current perturbs <code>u</code> near the electrode. As <code>z<sub>l</sub> → ∞</code> the
+electrode becomes a non-perturbing point probe; as <code>z<sub>l</sub> → 0</code> it becomes a
+short-circuit patch that flattens the surface potential over its whole footprint. This is why
+<code>draw_contact_z</code>'s docstring insists on the physical regime: values about 100× smaller
+make the electrodes near-ideal shunts that suppress the bolus signal while <em>maximising</em> drift
+sensitivity.</li>
+<li><b>Finite footprint.</b> Equation (8) is an <em>average</em> of <code>u</code> over the electrode, not
+a point value. The averaging kernel is fixed, but the field being averaged is the one the drive electrodes
+produced, so the drive-side term propagates through.</li>
+</ul>
+
+<p>In real hardware there is a fourth mechanism this model does not contain at all: the instrumentation
+amplifier has finite differential and common-mode input impedance, so a genuine current
+<code>i = (U<sub>p</sub> − U<sub>q</sub>)/Z<sub>in</sub></code> flows through the sense contacts and
+develops a real <code>i·z<sub>l</sub></code> error, and any mismatch
+<code>z<sub>p</sub> ≠ z<sub>q</sub></code> converts common-mode drive potential into differential error
+at a rate set by the amplifier's CMRR and the source-impedance imbalance.</p>
+
+<div class="mm-warn">
+<p><b>Correction to published language.</b> <code>build_methods.py</code> states that contact impedance
+"largely drops out of the sensed quantity" and the <code>strip3d.py</code> module docstring says
+"contact impedance largely rejected". <b>Both are overclaims and should be struck.</b> The supported
+statement is: <em>tetrapolar sensing reduces sensitivity to contact impedance by roughly a factor of four
+over the modelled range; a 16% residual sensitivity remains, and because the model's voltmeter is ideal,
+the true figure for real hardware can only be worse.</em> The V4 residual is a <b>lower bound</b> on
+physical contact-impedance sensitivity, not an estimate of it.</p>
+</div>
+
+<p>Two limitations of V4 itself, and one withdrawal:</p>
+<ul>
+<li><b>V4 sweeps a <em>common</em> contact impedance.</b> <code>zc = np.full(world.L, float(z0))</code>
+sets every electrode to the same value. That is the most benign case: a uniform
+<code>z<sub>0</sub></code> shift is close to common mode and is exactly what the across-zone mean
+subtraction in <code>_strip_aperture_stats</code> is designed to null. The trial generator does not do
+this. <code>draw_contact_z</code> draws <code>z0 = rng.uniform(5, 20, size=world.L)</code>
+<em>independently per electrode</em>, then applies per-electrode phase-randomised breathing modulation and
+a motion-scaled independent term. <b>The differential-mismatch case, which is the one that actually
+degrades a tetrapolar measurement, was never isolated by V4.</b> The obvious test is to hold the mean
+<code>z<sub>0</sub></code> fixed and sweep the spread, and it has not been run.</li>
+<li><b>The 4.3× figure is mesh-conditioned.</b> V4 ran on the <code>n_rings=6, nz=17</code> mesh,
+which is V3's 2261-node level, where absolute <code>|Z|</code> carries a 12.4% error against the finest
+mesh. The contact term scales as <code>z<sub>0</sub>/|E<sub>l</sub>|</code> with
+<code>|E<sub>l</sub>|</code> the <em>realised</em> facet area, and V3's whole finding is that realised
+electrode area snaps to mesh facets and changes discontinuously with refinement (11 to 76% non-monotone
+swings in <code>|Z|</code>). The <em>qualitative</em> conclusion, that rejection is finite and modest
+rather than near-total, is robust. The number 4.34 should be read as "order 4", not as a calibrated
+constant.</li>
+<li><b>Withdrawn.</b> An earlier draft criticised V4 for using <code>world.zones[:8]</code> and thereby
+excluding "the one aperture doing the depth work". That criticism was wrong, and in fact backwards.
+<code>tetrapolar_zones</code> orders zones strip-major then G-major, so <code>zones[:8]</code> is exactly
+strip 0's five G=3 zones plus its three G=5 zones, that is, <b>precisely the set of zones the estimator
+can use on that strip</b>. The only zone excluded is the G=7 zone the estimator discards anyway. V4's
+subset is well chosen; the correct statement is that it covers one strip rather than both, and the two
+strips do not have mirror-image realised electrode area (a defect the fractional normalisation was
+introduced to handle), so repeating V4 on <code>zones[9:17]</code> would be worth the two minutes it
+costs.</li>
+</ul>
+
+<h4>5. Negative lobes in the raw zone sensitivity</h4>
+
+<p>Because <code>S(r) = E<sub>d</sub>·E<sub>s</sub></code> is an inner product of two vector
+fields, it changes sign wherever they are antiparallel. To locate the sign structure for the array the
+code actually builds, I evaluated (4) analytically for a homogeneous half-space using surface monopole
+Green's functions at the exact electrode positions <code>place_strips</code> and
+<code>tetrapolar_zones</code> produce. With
+<code>u(r) = (ρ/2π) Σ<sub>k</sub> s<sub>k</sub>/|r−r<sub>k</sub>|</code> per unit
+current and <code>∇(1/|r−r<sub>k</sub>|) = −(r−r<sub>k</sub>)/|r−r<sub>k</sub>|<sup>3</sup></code>,
+the lead field defined in §2 is</p>
+
+<p style="margin-left:1.5em">(9)  
+E(r) = −∇u/I = +(ρ/2π) Σ<sub>k</sub> s<sub>k</sub>
+(r−r<sub>k</sub>)/|r−r<sub>k</sub>|<sup>3</sup>,  
+∇u/I = −(ρ/2π) Σ<sub>k</sub> s<sub>k</sub>
+(r−r<sub>k</sub>)/|r−r<sub>k</sub>|<sup>3</sup></p>
+
+<p>An earlier draft printed the second form with the first form's sign. <code>S</code> is unaffected
+because both fields flip together, but the expression as printed was wrong and is corrected here.</p>
+
+<p>Also note a geometry detail that the code's own docstrings get wrong: <code>tetrapolar_zones</code>
+describes "sliding Wenner zones", but the sense pair is <code>(k+c, k+c+1)</code>, always
+<em>adjacent</em>, one pitch apart, whatever the outer gap G. So only G=3 is a Wenner-α array; G=5
+is a <b>Schlumberger</b> array with AB/MN = 5. The array is <b>collinear</b> and longitudinal, not
+concentric: <code>place_strips</code> puts all electrodes at one azimuth and varies z. An earlier draft
+used "concentric four-electrode geometry", which is a different topology with different lobe structure,
+and asserted that the negative region "occupies a volume comparable to the positive one". <b>That
+assertion is contradicted by this section's own computation and is withdrawn.</b> The negative region is
+a thin subcutaneous shell reaching at most 0.19·AB:</p>
+
+<table class="mm-t">
+<tr><th>strip</th><th>G</th><th>AB (cm)</th><th>MN (cm)</th><th>max depth of negative lobe (cm)</th><th>as fraction of AB</th><th>usable?</th></tr>
+<tr><td>16 cm</td><td>3</td><td>6.86</td><td>2.29</td><td>1.09</td><td>0.159</td><td>yes</td></tr>
+<tr><td>16 cm</td><td>5</td><td>11.43</td><td>2.29</td><td><b>2.08</b></td><td>0.182</td><td>yes</td></tr>
+<tr><td>16 cm</td><td>7</td><td>16.00</td><td>2.29</td><td>3.02</td><td>0.188</td><td>no</td></tr>
+<tr><td>10 cm</td><td>3</td><td>4.29</td><td>1.43</td><td>0.68</td><td>0.159</td><td>yes</td></tr>
+<tr><td>10 cm</td><td>5</td><td>7.14</td><td>1.43</td><td><b>1.30</b></td><td>0.182</td><td>yes</td></tr>
+<tr><td>10 cm</td><td>7</td><td>10.00</td><td>1.43</td><td>1.88</td><td>0.188</td><td>no</td></tr>
+</table>
+
+<p>The sign structure along the strip axis, at fixed depth, for the deepest <em>usable</em> aperture
+(16 cm strip, G=5, AB = 11.43 cm, MN = 2.29 cm), sampled at 1 cm steps from −12 to +12 cm:</p>
+
+<table class="mm-t">
+<tr><th>depth below skin</th><th>sign of S along the strip axis</th></tr>
+<tr><td>0.2 cm</td><td><code>+++++++----+++----+++++++</code></td></tr>
+<tr><td>1.0 cm</td><td><code>+++++++----+++----+++++++</code></td></tr>
+<tr><td>2.0 cm</td><td><code>++++++++--+++++--++++++++</code></td></tr>
+<tr><td>2.5 cm</td><td><code>+++++++++++++++++++++++++</code></td></tr>
+<tr><td>3.0 cm</td><td><code>+++++++++++++++++++++++++</code></td></tr>
+</table>
+
+<p>The negative lobes sit in the two axial bands <em>between each drive electrode and the nearer sense
+electrode</em>; sensitivity is positive directly under the sense pair and positive again outboard of the
+drive electrodes. Three consequences:</p>
+
+<ol>
+<li><b>A dip in a raw zone trace is not a depth-resolved statement.</b> A bolus of urine
+(σ = 1.70 S/m) against muscle (0.34) has Δσ > 0, so by (4) a bolus in a
+<em>positive</em> lobe drives ΔZ <em>down</em> and the same bolus in a <em>negative</em> lobe drives
+ΔZ <em>up</em>. A negative excursion says only "conductive material in a positive lobe, or
+resistive material in a negative lobe". The <code>zone_series</code> docstring's parenthetical, "a
+conductive bolus lowers impedance, so the excursion is negative", is true for the deep target but is not
+universally true for the sensitivity field.</li>
+<li><b>At the nominal ureter depth the raw sensitivity is positive-definite, and once G=7 is dropped this
+is no longer a knife edge.</b> The model's ureter sits at <code>0.55R = 3.025</code> cm. The deepest
+usable lobe closes at 2.076 cm (16 cm strip) and 1.297 cm (10 cm strip), giving margins of 0.95 cm and
+1.73 cm rather than the 0.015 cm coincidence an earlier draft reported for the unusable G=7 aperture.
+Since <code>ur_x = 0.45R</code> pins depth to 0.55R, sign ambiguity at the ureter would require
+R < 3.78 cm (16 cm strip) or R < 2.36 cm (10 cm strip), which is below neonatal. Within the
+half-space proxy, positive-definiteness of the <em>raw</em> zone sensitivity at the ureter is therefore
+robust across the whole plausible body-radius range, which is a genuine improvement on the earlier
+claim. It says nothing about the <em>projected</em> quantity in §6, where the sign structure is
+completely different.</li>
+<li><b>The lobes sit precisely where motion artefact lives.</b> They occupy the top 0.7 to 2.1 cm: skin,
+the 0.99 cm fat shell (<code>r > 0.82R</code>, R = 5.5 cm), and superficial muscle. Those are exactly
+the tissues that translate under respiration and electrode motion, and the tissues where the interface
+argument of §2 predicts elevated <code>S</code>. A superficial perturbation straddling a sign
+boundary produces a bipolar, sign-ambiguous excursion whose fitted arrival time is meaningless. This
+remains a plausible contributor to the 11.1% false-retrograde floor on empty windows at zero motion
+measured in Study 6, but §6 gives a mechanism that needs no shallow tissue, no motion and no
+sensitivity-field argument at all, and that mechanism is now the leading candidate.</li>
+</ol>
+
+<h4>6. The operator the estimator actually applies: common-mode-rejected sensitivity</h4>
+
+<p>§5 analyses the sensitivity of a <em>raw</em> zone. The estimator never sees a raw zone.
+<code>_strip_aperture_stats</code> does, for every aperture with three or more zones,</p>
+
+<p style="margin-left:1.5em"><code>if nz >= 3: ser = ser - ser.mean(axis=0, keepdims=True)</code></p>
+
+<p>the across-zone mean <em>of that strip at that aperture</em>. The effective sensitivity of zone i is
+therefore not <code>S<sub>i</sub></code> but</p>
+
+<p style="margin-left:1.5em">(10)  
+S̃<sub>i</sub>(r) = S<sub>i</sub>(r) − (1/n) Σ<sub>j</sub> S<sub>j</sub>(r),  
+Σ<sub>i</sub> S̃<sub>i</sub>(r) ≡ 0 for all r</p>
+
+<p>The identity on the right is the whole problem. The projected sensitivity sums to zero across zones
+<em>at every point in space and every frame</em>, so any perturbation anywhere, at any depth, produces a
+positive-going residual in some zones and a negative replica in others. This is a first-order,
+at-depth, guaranteed sign inversion between zones. It requires no negative lobe, no shallow tissue and no
+motion. The code's own comment already concedes the degenerate limit: "with exactly 2 the mean-removed
+series are exact negatives and the lag is destroyed". At <code>nz = 3</code>, which is <em>G=5, the
+deepest usable aperture</em>, the projection removes one of only three degrees of freedom.</p>
+
+<p>Computed from the same half-space proxy at the ureter depth of 3.025 cm, sweeping the bolus axially and
+recording peak amplitudes:</p>
+
+<table class="mm-t">
+<tr><th>strip</th><th>G</th><th>n zones</th><th>zone centres (cm from strip centre)</th><th>peak |S/Z| raw</th><th>peak |S̃/Z| projected</th><th>retained</th></tr>
+<tr><td>10 cm</td><td>3</td><td>5</td><td>−2.86 … +2.86</td><td>0.274</td><td>0.156</td><td>57%</td></tr>
+<tr><td>10 cm</td><td>5</td><td>3</td><td>−1.43, 0, +1.43</td><td>0.665</td><td>0.188</td><td><b>28%</b></td></tr>
+<tr><td>16 cm</td><td>3</td><td>5</td><td>−4.57 … +4.57</td><td>0.526</td><td>0.339</td><td>64%</td></tr>
+<tr><td>16 cm</td><td>5</td><td>3</td><td>−2.29, 0, +2.29</td><td>0.917</td><td>0.311</td><td><b>34%</b></td></tr>
+</table>
+
+<p>Two things follow immediately. First, <b>every reach and margin figure in §8 must be discounted by
+roughly 3× at G=5 and 1.6 to 1.8× at G=3</b> before it is compared to a noise floor, because
+the estimator cross-correlates the projected series, not the raw one. Independent per-zone noise is
+reduced by the same projection, but only by √(1 − 1/n) = 0.82 at n = 3, so the net loss in
+per-sample margin at G=5 is about 2.4×. Second, the projection is worst exactly where the design
+needs it most: the aperture with the best depth reach has the fewest zones and therefore the most
+aggressive mean subtraction.</p>
+
+<h4>6.1 The estimator is maximally exposed to relative sign, not protected from it</h4>
+
+<p>An earlier draft stated that "the estimator is protected because it uses only timing, never sign or
+amplitude of the excursion". <b>That is false twice over and is withdrawn.</b></p>
+
+<ul>
+<li><b>Timing is computed from signed traces.</b> <code>xcorr_lag</code> calls
+<code>_norm(a) = (a − mean)/std</code>, which is mean-and-scale normalisation, <em>not</em>
+rectification, and then maximises <code>c[L] = dot(a, b)/n</code> over
+<code>L ∈ [−max_lag, +max_lag]</code> with
+<code>max_lag = max(3, 2n//3)</code>, which is <b>±13 samples for the T = 20 both cited studies
+use</b>. If zone j's projected excursion is inverted relative to zone 0, no lag makes the correlation
+positive, so <code>argmax</code> lands wherever the biased <code>/n</code> taper drives c least negative,
+which is at the extreme of the search range. A relative sign flip does not <em>degrade</em> the lag by a
+little, it <em>replaces</em> it with a saturated ±13 value that then dominates the least-squares
+slope. Sign is the single most load-bearing property of this estimator.</li>
+<li><b>Amplitude is used explicitly.</b> <code>direction_features</code> weights each aperture by
+<code>z_baseline × (0.25 + lin) × √dif_energy</code>, and <code>decide_direction</code>
+selects the strip by <code>dif_energy</code>. Amplitude selects the strip and weights the fusion.</li>
+</ul>
+
+<p>To see how large the exposure is, I pushed the half-space proxy through a faithful re-implementation of
+<code>xcorr_lag</code> and <code>_strip_aperture_stats</code> (identical code, applied to analytic
+noiseless traces rather than FEM output), for a retrograde bolus on the code's own
+<code>bolus_path</code> geometry at each grade, at 3.025 cm depth, T = 20:</p>
+
+<table class="mm-t">
+<tr><th>config</th><th>grade</th><th>G=3 slope (samples/cm)</th><th>G=3 lin</th><th>G=5 slope</th><th>G=5 lin</th><th>fused lin</th><th>call (truth: reflux)</th></tr>
+<tr><td>10 cm @ z=0.34</td><td>I</td><td><b>−2.10</b></td><td>0.515</td><td>+4.55</td><td>0.885</td><td>0.687</td><td>reflux ✓</td></tr>
+<tr><td>10 cm @ z=0.34</td><td>II</td><td>+0.90</td><td>0.052</td><td>+4.55</td><td>0.989</td><td>0.729</td><td>reflux ✓</td></tr>
+<tr><td>10 cm @ z=0.34</td><td>III</td><td>+2.31</td><td>0.973</td><td>+4.19</td><td>0.964</td><td>0.970</td><td>reflux ✓</td></tr>
+<tr><td>10 cm @ z=0.34</td><td>V</td><td>−0.42</td><td>0.036</td><td><b>−2.80</b></td><td>0.465</td><td>0.304</td><td>ABSTAIN</td></tr>
+<tr><td>16 cm @ z=0.50</td><td>I</td><td><b>−0.70</b></td><td>0.141</td><td>+2.31</td><td>0.997</td><td>0.614</td><td>reflux ✓</td></tr>
+<tr><td>16 cm @ z=0.50</td><td>II</td><td><b>−0.96</b></td><td>0.266</td><td><b>−0.84</b></td><td>0.299</td><td>0.277</td><td>ABSTAIN</td></tr>
+<tr><td>16 cm @ z=0.50</td><td>III</td><td><b>−1.20</b></td><td>0.430</td><td>+1.83</td><td>0.996</td><td>0.700</td><td>reflux ✓</td></tr>
+<tr><td>16 cm @ z=0.50</td><td>V</td><td>+1.48</td><td>0.990</td><td>+2.49</td><td>0.915</td><td>0.968</td><td>reflux ✓</td></tr>
+</table>
+
+<p>In this noiseless proxy, <b>7 of 16 aperture-level slopes carry the wrong sign</b>, and individual
+arrival times saturate at the ±13 bound in most of those cases. The fused decision is nonetheless
+correct in 6 of 8 cases and abstains in the other 2, with <b>zero confident inversions</b>. The reason is
+the fusion weight: the wrong-signed apertures mostly carry low <code>lin</code>, so
+<code>(0.25 + lin)</code> discounts them, and where they do not, the fused <code>lin</code> falls below
+<code>LIN_GATE = 0.35</code> and the estimator abstains. This is the same safe-failure signature Study 6
+measured under motion, and it is now traced to a specific mechanism rather than observed.</p>
+
+<p>The corrected statement of the protection, then, is:</p>
+
+<ul>
+<li>The timing formulation gives <b>no</b> protection against relative sign inversion between zones. It
+converts it into saturated lags.</li>
+<li>The only protection is downstream: the <code>lin</code> gate at 0.35, which is an <em>abstain</em>
+rule, plus the <code>(0.25 + lin)</code> aperture weighting inside the fusion.</li>
+<li>Because the CMR projection (10) <em>guarantees</em> sign inversion between inner and outer zones of
+every aperture, that gate is not a nicety, it is structural. Removing it would not slightly degrade
+performance, it would expose the estimator directly to a first-order sign flip.</li>
+</ul>
+
+<div class="mm-warn">
+<p><b>This is now the leading candidate explanation for the 11.1% zero-motion false-retrograde floor</b>
+that Study 6 measured on empty windows, superseding the shallow-lobe hypothesis of §5(3). It needs
+no motion, no shallow tissue and no sensitivity-field geometry: mean subtraction across three zones
+guarantees anti-correlated pairs, <code>xcorr_lag</code> saturates on anti-correlated pairs at
+±13, and a saturated lag pair fitted against zone height yields a large-magnitude slope whose
+sign is essentially arbitrary. <b>The project has not tested this.</b> The test is cheap and decisive:
+take the empty (no-flow) windows already generated by <code>run_motion2.py</code> and record what
+fraction of <code>tarr</code> entries sit at exactly ±13, and what the false-retrograde rate is
+conditional on that. If the floor is saturation-driven, clipping <code>max_lag</code> to the
+physically possible transit range, or discarding saturated lags rather than regressing them, should move
+the floor directly. Neither has been tried.</p>
+<p>The proxy above is a half-space, noiseless, with a point bolus and no fat shell, cylinder, end caps or
+contact impedance. Its per-aperture sign statistics should <em>not</em> be read as predictions of the
+FEM results; they establish that the mechanism exists and is first-order, not its magnitude in the real
+model.</p>
+</div>
+
+<h4>7. Depth sensitivity versus electrode separation</h4>
+
+<p>Two figures of merit must be distinguished, and conflating them is the standard error in this area.</p>
+
+<p><b>Absolute sensitivity</b> <code>S = E<sub>d</sub>·E<sub>s</sub></code> determines ΔZ in
+ohms and is maximised by <em>short</em> arrays, which concentrate both lead fields. <b>Fractional
+sensitivity</b> <code>S/Z</code> determines ΔZ/|Z|, which is what the code actually carries, because
+<code>simulate_trial</code> normalises <code>dZ = (Z − base)/np.abs(base)</code> and, decisively,
+injects <em>fractional</em> noise <code>σ<sub>n</sub> = 10<sup>−SNR/20</sup></code> on the
+normalised quantity.</p>
+
+<p>An earlier draft justified the wide aperture by "Z falls roughly as 1/G while S falls more slowly".
+<b>That exponent is wrong, and as written it refutes its own conclusion.</b> For a symmetric collinear
+array on a half-space with drives at ±Ga/2 and sense at ±a/2, superposing the four monopole
+terms gives exactly</p>
+
+<p style="margin-left:1.5em">(11)  
+Z = (ρ/2π)[1/AM − 1/BM − 1/AN + 1/BN] = 4ρ / (π a (G<sup>2</sup> − 1))</p>
+
+<p>So Z falls as 1/(G<sup>2</sup>−1), not 1/G. At ρ = 294.1 Ω·cm and a = 2.286 cm
+that is Z = 20.48, 6.83, 3.41 Ω for G = 3, 5, 7. Over the <em>usable</em> range G = 3 → 5 the
+denominator goes 8 → 24, so Z falls exactly <b>3.00×</b>, while absolute S at 3.025 cm falls
+only <b>1.70×</b> (10.63 → 6.26 Ω<sup>2</sup>·cm<sup>−2</sup>). The ratio,
+1.77×, is exactly the S/Z increase the table below shows (0.5188 → 0.9174). Had Z fallen only
+as 1/G (1.67×) the narrow aperture would have won. The wide-aperture conclusion survives only with
+the correct exponent.</p>
+
+<p>V3 supplies the independent justification for working in fractional terms at all: absolute
+<code>|Z|</code> does not converge (11 to 76% non-monotone error over an 8× node range, because
+realised electrode area snaps to mesh facets) while the arrival-time slope converges cleanly
+(6.8 → 2.8 → 0.97 → 0.11%). <b>No claim about absolute impedance magnitude is supported by
+this model</b>; only differential and timing claims are. Note that this cuts against (11) too: (11) is an
+analytic half-space result, not a model output, and the model's own <code>|Z|</code> is not converged
+enough to check it against.</p>
+
+<p>Fractional sensitivity <code>S/Z</code> (Ω·cm<sup>−2</sup>) directly beneath the zone
+centre, homogeneous half-space proxy, σ = 0.34 S/m. G=7 columns are shown struck through as a
+reminder that the estimator discards them:</p>
+
+<table class="mm-t">
+<tr><th>depth (cm)</th><th>16 cm G=3</th><th>16 cm G=5</th><th><s>16 cm G=7</s></th><th>10 cm G=3</th><th>10 cm G=5</th><th><s>10 cm G=7</s></th></tr>
+<tr><td>1.0</td><td>10.51</td><td>12.26</td><td><s>12.79</s></td><td>16.68</td><td>21.62</td><td><s>23.30</s></td></tr>
+<tr><td>2.0</td><td>2.194</td><td>3.092</td><td><s>3.426</s></td><td>1.697</td><td>3.116</td><td><s>3.832</s></td></tr>
+<tr><td>2.5</td><td>1.057</td><td>1.664</td><td><s>1.920</s></td><td>0.653</td><td>1.406</td><td><s>1.867</s></td></tr>
+<tr><td><b>3.025</b></td><td>0.519</td><td><b>0.917</b></td><td><s>1.110</s></td><td>0.268</td><td><b>0.665</b></td><td><s>0.957</s></td></tr>
+<tr><td>3.5</td><td>0.286</td><td>0.558</td><td><s>0.707</s></td><td>0.130</td><td>0.359</td><td><s>0.553</s></td></tr>
+<tr><td>4.0</td><td>0.159</td><td>0.343</td><td><s>0.456</s></td><td>0.065</td><td>0.198</td><td><s>0.326</s></td></tr>
+<tr><td>5.0</td><td>0.056</td><td>0.142</td><td><s>0.207</s></td><td>0.020</td><td>0.069</td><td><s>0.126</s></td></tr>
+<tr><td>6.0</td><td>0.022</td><td>0.065</td><td><s>0.103</s></td><td>0.007</td><td>0.027</td><td><s>0.055</s></td></tr>
+</table>
+
+<p>The fall-off between 2 and 4 cm is a power law with exponent 3.17 (16 cm G=5), 3.78 (16 cm G=3), 3.98
+(10 cm G=5) and 4.70 (10 cm G=3): the <em>narrower</em> the array, the <em>steeper</em> the depth penalty.
+That is the quantitative content of "tetrapolar sensing depth scales with electrode separation", which
+<code>tetrapolar_zones</code> asserts in its docstring but never demonstrates.</p>
+
+<div class="mm-warn">
+<p><b>An earlier draft corroborated these profiles against Edwards-style depth-of-investigation rules for
+Wenner and Schlumberger arrays. That corroboration is circular and has been deleted.</b> Those rules are
+themselves derived from homogeneous half-space sensitivity theory, so agreement with a homogeneous
+half-space computation is a tautology and demonstrates nothing about the cylindrical, fat-shelled, CEM
+model. It is retained here only as an internal self-consistency check on the arithmetic. Published median
+depth constants for Schlumberger arrays also differ materially between sources (Edwards versus Roy and
+Apparao), so any specific constant would need a citation this section is not in a position to supply from
+the repository.</p>
+</div>
+
+<p>Two further readings:</p>
+<ul>
+<li><b>The 10 cm strip is the shallower instrument.</b> At the deepest usable aperture the two strips
+cross over at <b>2.02 cm</b> depth: shallower than that the 10 cm strip wins, deeper the 16 cm strip
+does. At the nominal 3.025 cm the 16 cm strip delivers 0.917 against 0.665, i.e. <b>38% more</b>
+fractional sensitivity. This matters for interpreting Study 5 (§9), because Study 5 nonetheless
+prefers the 10 cm strip.</li>
+<li><b>Laterality is geometrically well-conditioned, but only as an upper bound.</b> In the model the
+ipsilateral ureter is 3.025 cm from its strip and the contralateral ureter is 5.5 + 2.475 = 7.975 cm
+away. The half-space proxy gives ipsi:contra sensitivity ratios of 54× (16 cm, G=5), 111×
+(10 cm, G=5), 106× (16 cm, G=3) and 189× (10 cm, G=3).</li>
+</ul>
+
+<div class="mm-warn">
+<p><b>Those cross-talk ratios are an upper bound on laterality discrimination, not an estimate of it, and
+the earlier draft's conclusion that "cross-talk is therefore not the limiting factor" does not follow
+from an upper bound and is withdrawn.</b> A half-space is unbounded, so current spreads freely and the
+field at 7.975 cm is as weak as it can possibly be. The real domain is a 5.5 cm-radius cylinder with
+insulating end caps, so current is confined and forced around the body, and contralateral current density
+is strictly <em>higher</em> than the proxy predicts. The error is largest exactly where it matters: the
+contralateral distance of 7.975 cm exceeds the domain radius, so the proxy is evaluated well outside any
+regime where a half-space is even approximately the right geometry. Side assignment is what makes this
+device clinically actionable (VUR is unilateral in roughly half of cases and management differs), so this
+is not a corner case. <b>Two CEM solves, one with a bolus on each side, would settle it directly and
+cheaply. They have not been run.</b></p>
+</div>
+
+<h4>8. Can a flank strip reach a paediatric ureter?</h4>
+
+<p>The model places the ureter at <code>world.ur_x = 0.45R</code> with <code>R = 5.5</code> cm, i.e.
+<b>3.025 cm below the electrode plane</b>, behind a 0.99 cm fat shell (<code>r > 0.82R</code>). The
+bolus is an ellipsoid of semi-axes <code>(br, br, 1.15br)</code> with
+<code>br = GRADE_TABLE[g][0] × R</code>, giving volumes of 0.80 cm<sup>3</sup> (grade I),
+5.50 cm<sup>3</sup> (grade III) and 21.6 cm<sup>3</sup> (grade V). Combining these with (4),
+Δσ = 1.70 − 0.34 = 1.36 S/m, and the fractional sensitivities above.</p>
+
+<p><b>The 10 cm strip at z = 0.34 is tabulated first because it is the configuration Study 5 endorses.</b>
+An earlier draft tabulated only the 16 cm strip, at an aperture the code cannot use, so the recommended
+design had no reach figure anywhere in the section. Both usable apertures are shown.</p>
+
+<p><b>10 cm strip over the ureterovesical junction, G = 5 (AB = 7.14 cm), the deepest usable aperture:</b></p>
+
+<table class="mm-t">
+<tr><th>depth (cm)</th><th>S/Z</th><th>grade I ΔZ/|Z|</th><th>grade III</th><th>grade V</th><th>grade I margin at 60 dB, per sample, raw zone</th></tr>
+<tr><td>2.0</td><td>3.116</td><td>3.40%</td><td>23.3%</td><td>—<sup>†</sup></td><td>34.0×</td></tr>
+<tr><td>2.5</td><td>1.406</td><td>1.53%</td><td>10.5%</td><td>41.4%<sup>†</sup></td><td>15.3×</td></tr>
+<tr><td><b>3.025</b></td><td>0.665</td><td><b>0.725%</b></td><td><b>4.97%</b></td><td>19.6%<sup>†</sup></td><td><b>7.25×</b></td></tr>
+<tr><td>3.5</td><td>0.359</td><td>0.391%</td><td>2.69%</td><td>10.6%<sup>†</sup></td><td>3.91×</td></tr>
+<tr><td>4.0</td><td>0.198</td><td>0.216%</td><td>1.48%</td><td>5.82%</td><td>2.16×</td></tr>
+<tr><td>5.0</td><td>0.069</td><td>0.075%</td><td>0.512%</td><td>2.02%</td><td>0.75×</td></tr>
+<tr><td>6.0</td><td>0.027</td><td>0.030%</td><td>0.204%</td><td>0.80%</td><td>0.30×</td></tr>
+</table>
+
+<p><b>16 cm strip, G = 5 (AB = 11.43 cm):</b></p>
+
+<table class="mm-t">
+<tr><th>depth (cm)</th><th>S/Z</th><th>grade I ΔZ/|Z|</th><th>grade III</th><th>grade V</th><th>grade I margin at 60 dB, per sample, raw zone</th></tr>
+<tr><td>2.0</td><td>3.092</td><td>3.37%</td><td>23.1%</td><td>—<sup>†</sup></td><td>33.7×</td></tr>
+<tr><td>2.5</td><td>1.664</td><td>1.81%</td><td>12.4%</td><td>49.0%<sup>†</sup></td><td>18.1×</td></tr>
+<tr><td><b>3.025</b></td><td>0.917</td><td><b>1.00%</b></td><td><b>6.86%</b></td><td>27.0%<sup>†</sup></td><td><b>10.0×</b></td></tr>
+<tr><td>3.5</td><td>0.558</td><td>0.609%</td><td>4.17%</td><td>16.4%<sup>†</sup></td><td>6.09×</td></tr>
+<tr><td>4.0</td><td>0.343</td><td>0.374%</td><td>2.57%</td><td>10.1%</td><td>3.74×</td></tr>
+<tr><td>5.0</td><td>0.142</td><td>0.155%</td><td>1.06%</td><td>4.18%</td><td>1.55×</td></tr>
+<tr><td>6.0</td><td>0.065</td><td>0.071%</td><td>0.484%</td><td>1.90%</td><td>0.71×</td></tr>
+</table>
+
+<p>For reference, the shallower usable aperture G = 3 at 3.025 cm gives grade I excursions of 0.565%
+(16 cm) and 0.292% (10 cm), i.e. margins of 5.7× and 2.9×.
+<sup>†</sup> The grade V bolus has a 1.65 cm semi-axis and extends to within 1.4 cm of the skin,
+where <code>S</code> is an order of magnitude larger and the point-perturbation linearisation of (4) is
+invalid. Those entries should be read as "large", not as numbers.</p>
+
+<h4>8.1 Corrections that apply to every number in those tables</h4>
+
+<ol>
+<li><b>These are raw-zone excursions. The estimator sees the CMR projection.</b> Applying the retention
+factors from §6 (0.34 at 16 cm G=5, 0.28 at 10 cm G=5) and the matching noise reduction
+√(1−1/3) = 0.82, the grade-I per-sample margins at 3.025 cm fall from 10.0× to about
+<b>4.2×</b> (16 cm) and from 7.25× to about <b>2.5×</b> (10 cm).</li>
+<li><b>Real-part projection and frequency averaging.</b> §2.1 gives a net factor of 1.10× in
+SNR (signal ×0.777, independent noise ×0.707). Applying it: about <b>4.6×</b> and
+<b>2.7×</b>.</li>
+<li><b>Point-perturbation bias, and its direction.</b> Every excursion above evaluates <code>S</code> at
+the bolus centre and treats it as constant over the bolus volume. That is a real approximation, but it
+biases the numbers <em>low</em>, not high: because <code>S</code> falls as a high power of depth it is
+convex, so the shallow half of the bolus gains more than the deep half loses. Monte-Carlo integration over
+the actual ellipsoid gives ⟨S⟩/S(centre) = 1.02 (grade I, 16 cm G=5) to 1.31 (grade III, 10 cm
+G=3). So the centre-point estimate is conservative by 2 to 31%, and an objection that it sits at the
+sensitivity maximum has the sign backwards.</li>
+<li><b>The 5 to 10× "coherent gain available to a timing estimate" claimed in an earlier draft is
+deleted.</b> It was invented. The two frequencies are already consumed inside <code>zone_series</code>;
+the T = 20 frames are the signal support, not repeats; the zones of a strip span apertures that share
+electrodes and sample overlapping volumes, so they are strongly correlated rather than independent; and
+the CMR subtraction removes a rank-one component of the very signal being integrated.</li>
+</ol>
+
+<div class="mm-warn">
+<p><b>The amplitude margin does not establish that the direction call is noise-robust, and this section
+does not compute the quantity that would.</b> Delay-estimator variance scales as
+1/(SNR<sup>2</sup>·β<sub>rms</sub><sup>2</sup>) with β<sub>rms</sub> the RMS bandwidth of
+the zone waveform. The waveform here is a slow unipolar passage across T = 20 frames, which is the
+lowest-bandwidth and therefore worst case for delay estimation, and the output of interest is the
+<em>sign</em> of a regression slope through those delays, not the delays themselves. <b>The
+Cramér-Rao bound on arrival-time variance, and its propagation into P(sign error) for the
+least-squares slope, is the missing calculation.</b> It is analytic and cheap.</p>
+<p>Study 6 already gives direct evidence that amplitude SNR is not what binds: <b>an 11.1%
+false-retrograde rate on empty windows at zero motion and 60 dB SNR</b>, precisely the regime these
+tables call comfortable. Either that floor is not noise, in which case these margins are irrelevant to
+performance, or it is, in which case these margins are wrong. Either way, <b>§8 licenses no
+performance claim.</b> The honest headline is: <em>the half-space proxy puts the grade-I excursion at the
+modelled depth roughly 10× (16 cm) or 7× (10 cm) above the assumed per-sample instrument
+noise floor before common-mode rejection, and roughly 4.6× and 2.7× after it. Whether that
+survives the fat shell, curvature, insulating end caps and finite contact impedance is not known, and the
+two CEM solves per zone that would settle it have not been run.</em></p>
+</div>
+
+<h4>8.2 The instrument floor is almost certainly the wrong floor</h4>
+
+<p>The comparison above is against <code>σ<sub>n</sub> = 10<sup>−SNR/20</sup></code>, which is
+an <em>instrument</em> floor. In any real transabdominal or flank bioimpedance measurement the dominant
+time-varying terms in the 0.1 to 2 Hz band are physiological, not instrumental, and they sit squarely
+inside the passband of a 20-frame bolus transit:</p>
+
+<table class="mm-t">
+<tr><th>term</th><th>literature order of magnitude, trunk, 50 to 100 kHz</th><th>in this model?</th></tr>
+<tr><td>respiratory modulation of transfer impedance</td><td>roughly 1 to 3% of baseline</td><td>only as a <em>geometric</em> displacement of the conductivity field, plus a 3% per-electrode contact modulation</td></tr>
+<tr><td>cardiac and perfusion pulsatility</td><td>roughly 0.1 to 0.5%</td><td><b>absent entirely</b></td></tr>
+<tr><td>assumed instrument noise at 60 dB</td><td>0.1%</td><td>yes, fractional, i.i.d. plus a correlated term</td></tr>
+<tr><td><b>grade I signal at 3.025 cm, G=5</b></td><td><b>0.73% (10 cm) to 1.00% (16 cm) raw; roughly 0.20% to 0.34% after CMR</b></td><td>yes</td></tr>
+</table>
+
+<p>The comparison that matters is the last two rows against the first two. <b>The grade-I signal is at or
+below the amplitude of ordinary respiratory impedance change, and after common-mode rejection it is
+comparable to cardiac pulsatility.</b> The question the panel will ask is not "can the amplifier see it"
+but "can anything distinguish it from breathing", and this section previously answered only the former.</p>
+
+<div class="mm-warn">
+<p>The literature amplitudes in that table are textbook order-of-magnitude figures from impedance
+pneumography and impedance cardiography practice, quoted for the trunk. <b>This project has measured
+none of them, has no abdominal or flank-specific figure, and contains no cardiac or perfusion term at
+all.</b> Its respiratory term is a rigid or z-graded geometric displacement of the conductivity field
+plus a contact-impedance modulation; it is <em>not</em> a perfusion-driven conductivity change, and the
+two need not have the same spectrum or the same common-mode structure. Study 6's finding that the
+gradient hypothesis is refuted therefore applies to the geometric mechanism only and says nothing about a
+perfusion mechanism the model does not contain. Adding a spatially structured, cardiac-rate conductivity
+modulation to <code>base_sigma</code> is a small change and is the single most informative missing
+robustness study in the project.</p>
+</div>
+
+<h4>8.3 Two parameters that every number above is linear or steeply nonlinear in</h4>
+
+<p><b>Depth.</b> The 3.025 cm figure is a <em>modelling choice</em> (<code>ur_x = 0.45R</code>,
+<code>R = 5.5</code> cm), not an anatomical measurement, and it is structurally tied to body radius:
+depth = 0.55R. R = 5.5 cm is a small-child or phantom radius. VUR is worked up from infancy through
+school age, and a 6 to 7-year-old's flank-to-ureter distance is materially greater.</p>
+
+<table class="mm-t">
+<tr><th>R (cm)</th><th>implied depth 0.55R (cm)</th><th>10 cm G=5 grade I</th><th>margin</th><th>16 cm G=5 grade I</th><th>margin</th></tr>
+<tr><td>4.0</td><td>2.20</td><td>2.44%</td><td>24.4×</td><td>2.61%</td><td>26.1×</td></tr>
+<tr><td><b>5.5 (model)</b></td><td><b>3.03</b></td><td><b>0.725%</b></td><td><b>7.25×</b></td><td><b>1.00%</b></td><td><b>10.0×</b></td></tr>
+<tr><td>6.5</td><td>3.58</td><td>0.357%</td><td>3.57×</td><td>0.564%</td><td>5.64×</td></tr>
+<tr><td>7.0</td><td>3.85</td><td>0.257%</td><td>2.57×</td><td>0.431%</td><td>4.31×</td></tr>
+</table>
+
+<p>The grade-I excursion crosses the 60 dB instrument floor at 4.71 cm (10 cm strip) and 5.54 cm (16 cm
+strip), and at the 50 dB floor at 3.67 cm and 4.18 cm respectively. A 27% increase in body radius
+(5.5 → 7.0 cm) costs a factor 2.8 in signal on the 10 cm strip. <b>The single most valuable cheap
+piece of external validation available to this project remains a literature or CT distribution of
+flank-to-ureter distance by age, and it has never been obtained.</b> Note also that the model does not
+scale anything else with age: bolus size is tied to R through <code>GRADE_TABLE</code>, so a larger child
+gets a proportionally larger bolus, which partially offsets the depth penalty in a way this table does
+not capture.</p>
+
+<p><b>Urine conductivity.</b> Δσ = 1.36 S/m is at least as uncertain as depth and is
+<em>not</em> covered by the standing "literature tissue values" caveat, because urine conductivity is not
+a tissue property, it is a patient-state variable that tracks osmolality and varies by roughly an order of
+magnitude between a well-hydrated child and a concentrated first-morning specimen.
+ΔZ/|Z| is exactly linear in Δσ.</p>
+
+<table class="mm-t">
+<tr><th>σ<sub>urine</sub> (S/m)</th><th>Δσ (S/m)</th><th>10 cm G=5 grade I at 3.025 cm</th><th>margin</th><th>16 cm G=5</th><th>margin</th></tr>
+<tr><td>0.6 (dilute)</td><td>0.26</td><td>0.139%</td><td><b>1.39×</b></td><td>0.191%</td><td><b>1.91×</b></td></tr>
+<tr><td>1.0</td><td>0.66</td><td>0.352%</td><td>3.52×</td><td>0.485%</td><td>4.85×</td></tr>
+<tr><td><b>1.70 (model)</b></td><td><b>1.36</b></td><td><b>0.725%</b></td><td>7.25×</td><td><b>1.00%</b></td><td>10.0×</td></tr>
+<tr><td>2.5 (concentrated)</td><td>2.16</td><td>1.151%</td><td>11.5×</td><td>1.588%</td><td>15.9×</td></tr>
+</table>
+
+<div class="mm-warn">
+<p><b>I checked: <code>σ<sub>urine</sub></code> is a fixed module constant.</b>
+<code>TISSUE["urine"] = (1.70, 80.0)</code> is read directly by <code>admittivity()</code> in both
+<code>base_sigma</code> (bladder lumen) and <code>add_bolus</code> (the bolus). <code>draw_anatomy</code>
+varies <code>ur_x</code>, kidney offset, bladder position and size, but <b>never varies urine
+conductivity</b>. So every trial in every study in this project used exactly Δσ = 1.36 S/m.
+That is a fixed-parameter limitation, not a modelled uncertainty, and it should be named as such in the
+Methods. Worse, the direction of the risk is unfavourable: the implied clinical protocol is a VCUG
+surrogate, i.e. a child who has been deliberately hydrated or whose bladder has been catheter-filled with
+saline or dilute contrast, which is precisely the regime where the instilled fluid is <em>most</em>
+dilute and Δσ smallest. A one-line sweep of <code>TISSUE["urine"][0]</code> over 0.5 to 3.0
+S/m, ideally drawn per subject, is required before any detectability claim is made, and it has not been
+run.</p>
+</div>
+
+<h4>9. Reconciling the lead-field picture with the Study 5 placement result</h4>
+
+<p>The lead-field analysis says the 16 cm strip is the deeper instrument: 38% more fractional sensitivity
+at the ureter at the deepest usable aperture, and a 2.08 cm rather than 1.30 cm lobe-closure depth. Study
+5 says the opposite about clinical performance. The 16 cm strip at <code>z = 0.50</code> <b>never detects
+25 to 33% of refluxing children on any of six voids, and 43% of low-grade refluxers even at perfect
+placement</b>, while the 10 cm strip over the ureterovesical junction at <code>z = 0.34</code> misses 0%
+at perfect placement and 8% at 2 cm of placement error. These are not in conflict, and the resolution is
+the central design lesson:</p>
+
+<ul>
+<li><b>Depth reach is not the binding constraint. Axial coverage is.</b> A zone with excellent depth
+sensitivity centred 6 cm above the ureterovesical junction sees nothing, because low-grade reflux never
+travels far enough to enter its sensitivity volume. <code>GRADE_TABLE[1][1] = 0.20</code> and
+<code>[2][1] = 0.38</code> cap the retrograde reach at 20% and 38% of the bladder-to-kidney distance.
+Concretely, with <code>z_bladder = 4</code> cm, <code>z_kidney = 16</code> cm and a 2.4 cm margin, a grade
+I bolus traverses z = 1.6 to 8.8 cm. The 10 cm strip at z = 0.34 spans 1.8 to 11.8 cm, so the bolus
+crosses most of it; the 16 cm strip at z = 0.50 spans 2 to 18 cm, so the bolus never reaches the upper
+half of the array and those zones contribute noise and a zero-mean CMR pedestal rather than signal. The
+16 cm strip's superiority in <code>S/Z</code> is spent on tissue with no bolus in it.</li>
+<li><b>The estimator's own weighting fights the deep aperture, and equation (7) says why.</b> On a fixed
+span the widest usable aperture has the shortest lever arm: 4.57 cm against 9.14 cm on the 16 cm strip,
+2.86 cm against 5.71 cm on the 10 cm strip. Since <code>direction_features</code> weights by
+<code>z_baseline × (0.25 + lin) × √dif_energy</code>, the aperture with the best depth
+figure of merit is systematically down-weighted. Fusion rather than selection is the only defensible
+resolution, and the code does fuse.</li>
+<li><b>The design implication is a longer strip that is still centred low</b>, i.e. more electrodes over
+the ureterovesical junction, which buys both axial coverage and, through the multi-aperture synthesis in
+<code>tetrapolar_zones</code>, a deep aperture in software with enough zones to survive the
+<code>nz < 2</code> filter. <b>That is a hypothesis the sweep has not run.</b> Study 5 varied span and
+centre <em>together</em> (10 cm at z = 0.34 versus 16 cm at z = 0.50) and cannot separate them. The
+missing cells are 16 cm at z = 0.34 and 10 cm at z = 0.50, and they are the cheapest informative runs
+left in the project.</li>
+</ul>
+
+<div class="mm-warn">
+<p>The Study 5 cells are n = 48 children each and the 16 cm arm is non-monotone in placement error
+(sensitivity 75, 67, 88, 83% for σ = 0, 0.5, 1, 2 cm), which is not physically sensible and shows
+the per-cell noise is large. The never-detected gap (0 to 8% versus 25 to 33%) is large and consistent
+across cells, but the sensitivity and specificity numbers individually should not be quoted to two
+significant figures. Note also that the §6 proxy reproduces the qualitative Study 5 ordering: on the
+10 cm strip at z = 0.34 the proxy calls grades I, II and III correctly, while on the 16 cm strip at
+z = 0.50 it abstains on grade II. That agreement is suggestive, not confirmatory: it is a noiseless
+half-space with no anatomy, and it disagrees with Study 5 at grade V on the 10 cm strip.</p>
+</div>
+
+<h4>10. What is assumed rather than tested, in this section specifically</h4>
+
+<ol>
+<li><b>The sensitivity field was never computed with the actual FEM operator.</b> Every
+<code>S(r)</code>, <code>S/Z</code>, <code>S̃</code>, negative-lobe boundary, depth exponent,
+crossover, cross-talk ratio and grade excursion above comes from an <em>analytic homogeneous half-space</em>
+Green's-function evaluation at the code's realised electrode positions, not from <code>CEM3D</code>. It
+ignores the finite cylinder and its insulating end caps 2 cm beyond the 16 cm array; surface curvature;
+the 0.99 cm fat shell at 1/7.9 the muscle conductivity, whose interface amplification §2 estimates at
+up to 62× in <code>S</code>; the kidney and bladder inclusions; and the CEM's finite contact
+impedance. The direction and rough magnitude of each of these is arguable; their net effect on the
+numbers is not known. Computing <code>S</code> directly is cheap, two solves per zone and an element-wise
+product, and would replace this entire section's arithmetic with measurement. <b>It should be done before
+these numbers are relied upon.</b> The arithmetic itself has been independently recomputed for this
+revision and reproduces the earlier tables to three figures where the geometry is the same, so the errors
+corrected here are errors of <em>which array</em> and <em>which operator</em>, not of calculation.</li>
+<li><b>γ ≡ 0 is a hand derivation</b> from the structure of <code>_assemble</code>, not a
+numerical check. It is the load-bearing step in the claim that the model's voltmeter is ideal, and hence
+in the claim that the V4 16% residual is a lower bound on physical contact-impedance sensitivity.</li>
+<li><b>V2 is a symmetry and solver check, not a physics validation</b> (§1). There is no analytic or
+phantom benchmark anywhere in this project.</li>
+<li><b>V4 tested common-mode contact impedance only</b>, on one strip, on a mesh where <code>|Z|</code>
+carries 12.4% discretisation error (§4). The differential-mismatch case, which is the one that
+degrades tetrapolar sensing and the one the trial generator actually produces, is untested.</li>
+<li><b>The CMR sign-inversion mechanism of §6 is derived and demonstrated in the proxy, but never
+measured in the model.</b> Equation (10) is exact and its consequence, Σ<sub>i</sub>
+S̃<sub>i</sub> = 0, is unavoidable. What is not established is the resulting rate of saturated lags
+in the real FEM trials. The diagnostic is a two-line addition to <code>_strip_aperture_stats</code>.</li>
+<li><b>Tissue values are literature, not measured</b>, and the dispersion model in
+<code>admittivity()</code>, <code>σ(f) = σ<sub>0</sub>(1 + 0.04 log<sub>10</sub>(f/50 kHz))</code>
+and <code>ε<sub>r</sub>(f) = ε<sub>r0</sub>(50 kHz/f)<sup>0.10</sup></code>, is a
+two-parameter fit over a single octave, not a Cole-Cole or Gabriel-parameterised model. Over 50 to 100 kHz
+that is defensible; it should not be extrapolated. §2.1's inversion result depends on
+ωε/σ for kidney, which is the least well constrained of these.</li>
+<li><b>σ<sub>urine</sub> is fixed at 1.70 S/m in every trial ever run</b> (§8.3), and every
+excursion is exactly linear in it.</li>
+<li><b>The 60 dB SNR is an assumed budget, not a datasheet number</b>, and §8.2 argues it is
+probably not the binding floor in any case.</li>
+<li><b>No patient or phantom data of any kind exists for this device.</b> The linearisation in (4) is
+first-order in Δκ, and for grade IV to V boluses (ΔZ/|Z| computed above at 10 to 27%) it
+is being pushed past where a Born-type approximation is quantitatively trustworthy. The FEM solve is fully
+nonlinear and does not use (4); (4) is used here only as an interpretive tool, which is the one role it
+can safely play.</li>
+<li><b>No delay-estimation error analysis exists</b> (§8.1). Amplitude margin has been computed;
+arrival-time variance and P(slope sign error) have not.</li>
+</ol>
+
+<p>Finally, a note of calibration for the reader. This project has now had five confident claims overturned
+by measurement, including the authors' own nominated existential risk, the prediction that a craniocaudal
+respiratory gradient would inject a phase-locked false travelling wave, refuted by Study 6 where the
+full-gradient arm was if anything slightly <em>better</em> (false-retrograde 14.4% and direction accuracy
+79.4% at grad = 1.0, against 15.8% and 71.9% at grad = 0.0). This revision adds several more, all of them
+errors in the previous draft of <em>this section</em>: a depth argument built on an aperture the estimator
+discards, a claim of sign-independence contradicted by four lines of the estimator, a lead-field analysis
+performed on the wrong operator, a 1/G scaling that refuted its own conclusion, a real-part retention
+figure computed against the wrong normalisation, a dimensional correction that was itself dimensionally
+wrong, a criticism of V4's zone subset that was exactly backwards, and a cross-talk conclusion drawn from
+an upper bound. The correct prior on the remaining analytic arguments here is therefore not high. They are
+offered as a framework for interpreting the simulation, and the specific numbers should be regarded as
+provisional until the sensitivity field is computed with the real operator.</p>

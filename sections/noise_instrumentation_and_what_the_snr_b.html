@@ -1,0 +1,1198 @@
+<h3>Noise, instrumentation, and what the SNR budget assumes</h3>
+
+<p>Every other section of this report describes something the model computes.
+This section describes something the model <b>asserts</b>. The forward operator is
+verified to machine precision (V2, max relative reciprocity error
+4.77×10<sup>−15</sup> over 12 tetrapolar zones), the arrival-time slope
+converges monotonically across an 8× range of node count (V3: errors against
+the finest mesh of 6.80%, 2.84%, 0.97%, 0.11%), and the electrode boundary
+condition is a real Complete Electrode Model with finite contact impedance whose
+rejection factor has now been measured (V4). None of that says anything about
+whether a buildable instrument can resolve the quantity the estimator reads. That
+question is answered in the code by exactly one scalar, <code>snr_db</code>, whose
+default value is <code>60.0</code> in <code>simulate_trial</code> and which was
+chosen by the authors rather than read off a datasheet. It is the single most
+load-bearing unvalidated input in the project, and this section states precisely
+what it buys, what it hides, and what would falsify it.</p>
+
+<div class="mm-warn">
+<p><b>A claim this report has made twice and must withdraw.</b> Earlier drafts wrote
+that "the decision is invariant across an 8× range of mesh density". The V3
+record does not support that. <code>v3_mesh_convergence</code> solves <b>one</b>
+deterministic, noiseless trial (<code>_noiseless_trial(w, "reflux", grade 4, side
++1, seed 4242)</code>) at each of five refinement levels and records
+<code>decision = 1</code>, <code>strip = 0</code> and <code>lin</code> of 0.984 to
+0.997 at every level. Five identical decisions on one trial whose wave linearity is
+0.98–1.00 is a consistency check with n = 1 and essentially no opportunity to
+fail; it is not an invariance result. What V3 does establish, and establishes well,
+is the monotone convergence of the fitted slope (1.536, 1.479, 1.452, 1.437, 1.438
+samples·cm<sup>−1</sup>). Decision invariance would require the
+refinement sequence to be run over an ensemble of trials spanning the full range of
+<code>lin</code>, which has not been done; it is item 6 in section 11.</p>
+</div>
+
+<h4>1. What the model actually injects</h4>
+
+<p>Noise enters at one place only, the last four statements of
+<code>simulate_trial</code> (<code>directional_sim.py</code>:317–321). The
+measured tensor <code>Z</code> of shape (<code>T</code>, <code>F</code>,
+<code>n_zones</code>) is first referenced to a resting baseline and normalised:</p>
+
+<p><code>Z<sub>ref</sub> = mean(Z[0:2])</code>    
+<code>dZ = (Z − Z<sub>ref</sub>) / |Z<sub>ref</sub>|</code>   (1)</p>
+
+<p>and then perturbed by a two-component complex noise:</p>
+
+<p><code>σ<sub>n</sub> = 10<sup>−SNR/20</sup></code>   (2)</p>
+
+<p><code>dẐ[t,f,j] = dZ[t,f,j] + n<sub>ind</sub>[t,f,j] + 0.5·n<sub>cor</sub>[t,f]</code>
+  (3)</p>
+
+<p>where the real and imaginary parts of both <code>n<sub>ind</sub></code> (shape
+<code>(T,F,n_zones)</code>, drawn independently for every zone) and
+<code>n<sub>cor</sub></code> (shape <code>(T,F,1)</code>, broadcast identically
+across zones) are i.i.d. Gaussian with standard deviation
+<code>σ<sub>n</sub></code>. Four properties of this construction matter and
+should be stated plainly rather than left for a reviewer to discover.</p>
+
+<ul>
+<li><b>The noise is fractional, and deliberately so.</b> Because <code>dZ</code> is
+already a dimensionless fractional change, adding a fractional perturbation is the
+only unit-consistent choice. The in-code comment records that an earlier version
+derived <code>σ</code> from the raw <code>|Z|</code> and added it to the
+normalised quantity, which made the injected noise depend on the choice of length
+unit and left it sitting roughly 10 dB below the stated SNR. That was one of the
+fifteen defects found and fixed. The consequence is that <code>SNR</code> in this
+project means <b>signal-to-noise on the normalised transfer impedance</b>, not on a
+voltage, not on a raw impedance, and not on a reconstructed image. Section 5 shows
+that this choice also makes the implied <i>absolute</i> hardware requirement
+aperture-dependent, which the older version of this section hid inside an
+average.</li>
+
+<li><b>The noise is added after normalisation, so the baseline is noiseless.</b>
+<code>Z<sub>ref</sub></code> is computed from the clean solve. A real instrument
+divides by a noisy reference, which injects (i) a per-zone constant offset,
+correlated across every frame of that zone, and (ii) a per-zone multiplicative gain
+error. Both are second-order here and can be shown to be so: the offset is
+annihilated by the temporal mean removal <code>ser − ser.mean(axis=1)</code>
+at <code>directional_sim.py</code>:399, and the gain error is of size
+<code>σ<sub>n</sub>/√2 ≈ 7×10<sup>−4</sup></code> at
+60 dB (two averaged reference frames, real part only), which perturbs the per-zone
+weighting of the arrival-time fit by well under a tenth of a percent. This is a
+simplification we checked rather than one we are hoping is harmless, but it has not
+been simulated.</li>
+
+<li><b>The zone-correlated component is exactly cancellable — for apertures
+with at least three zones, which is not every aperture the project sweeps.</b>
+<code>n<sub>cor</sub></code> has a trailing dimension of 1, so at a given
+(<code>t</code>, <code>f</code>) it is <i>identical</i> for every zone on both
+strips. <code>_strip_aperture_stats</code> subtracts the across-zone mean, but the
+guard at line 397 is <code>if nz ≥ 3</code>, while the aperture is admitted at
+<code>nz ≥ 2</code> (line 384). At the locked <code>N = 8</code> the odd outer
+gaps are <code>G ∈ {3, 5, 7}</code> giving 5, 3 and 1 zones per strip; the
+one-zone <code>G = 7</code> aperture returns <code>None</code>, so every surviving
+aperture has <code>nz ≥ 3</code> and <code>n<sub>cor</sub></code> is removed
+exactly. But <code>run_directional.py</code> sweeps <code>COUNTS = [4, 5, 6, 8, 10,
+12]</code>, and at <code>N = 5</code> the single aperture has exactly 2 zones: the
+mean subtraction is skipped, <code>lin</code> is hard-set to 0.0 (line 413), the
+aperture enters the fusion at the fallback quality <code>q = 0.35</code> (line 468),
+and because <code>decide_direction</code> gates only when <code>n_zones ≥ 3</code>
+the estimator at <code>N = 5</code> <b>always makes a call, ungated, on a statistic
+that still carries <code>n<sub>cor</sub></code> in full</b>. The correct scoped
+statement is: the correlated half of the noise model contributes nothing to any
+aperture with ≥ 3 zones, which at <code>N ≥ 6</code> is every aperture that
+survives the <code>nz ≥ 2</code> filter; at <code>N = 5</code> it survives
+unrejected and unassessed.
+<br>Even where the cancellation is exact it is a best case, and the real risk lives
+in its complement: correlated disturbances in a real system are <i>not</i> uniform
+across channels, because channels differ in electrode area, cable route, multiplexer
+path and demodulator gain. Any spatial structure in a correlated disturbance
+survives the mean subtraction, and if that structure happens to be monotone in
+<code>z</code> it is indistinguishable from a travelling wave. Section 9 argues that
+this is the most likely explanation for the measured zero-motion false-retrograde
+floor.</li>
+
+<li><b>The noise is white in time and has no bandwidth, and the correction to that
+runs against the estimator, not with it.</b> One independent draw per (frame,
+frequency, zone), with no <code>1/f</code> component, no spectral shape and no
+dependence on integration time. Real front-end noise at 50–100 kHz after
+synchronous demodulation is dominated by <code>1/f</code> in the demodulated
+baseband, which is exactly the band (fractions of a Hz to a few Hz) in which the
+bolus signal lives. Earlier drafts said white noise is "the optimistic case because
+white noise averages out of a lag estimate". That understates the problem and gets
+the failure mode wrong. The observation window is 20 frames (section 2). Over 20
+samples a <code>1/f</code> process is not distinguishable from a low-order trend, so
+each zone acquires its own slow drift; <code>xcorr_lag</code> cross-correlating two
+slowly-drifting series returns a lag set by the <i>shapes</i> of those drifts, not by
+any travelling signal. Because adjacent zones at <code>G = 3</code> share three of
+their four electrodes (section 9), their front-end drifts are strongly positively
+correlated, so the resulting lag sequence varies <b>smoothly along <code>z</code></b>
+rather than randomly. <code>lin</code> is the R<sup>2</sup> of a straight line
+through arrival time versus <code>z</code>. A smooth lag sequence scores high. So
+<code>1/f</code> noise does not merely degrade the timing estimate — it
+plausibly <i>manufactures the linearity the abstain gate keys on</i>, which is the
+one mechanism that would convert the design's safe failure mode (abstain) into an
+unsafe one (confident wrong call). This is an argued mechanism, not a measured one;
+it directly qualifies the survival table in section 10 and it is the strongest single
+reason to run item 3 in section 11.</li>
+</ul>
+
+<h4>2. The implicit frame rate, the dwell per measurement, and therefore the
+measurement bandwidth</h4>
+
+<p>The SNR figure is meaningless without an integration time, and the code never
+states one. It can be recovered only under an assumption the code does not assert.
+Both <code>draw_motion</code> (lines 198–199) and <code>draw_contact_z</code>
+(line 219) hardcode <code>np.sin(2π × 0.30 × t / 4.0 + φ)</code>
+with <code>t = np.arange(T)</code>. Nothing in the source says that <code>0.30</code>
+is in hertz or that <code>4.0</code> is samples per second. <i>If</i> 0.30 denotes Hz,
+then <code>2π(0.30)Δt = 2π(0.30)/4</code> and</p>
+
+<p><code>Δt = 0.25 s</code>, frame rate <code>= 4 Hz</code>, and with
+<code>T = 20</code> (used in <code>run_directional.py</code>,
+<code>run_motion2.py</code> and <code>run_precision.py</code>; the
+<code>simulate_trial</code> default is <code>T = 16</code>) an observation window of
+<b>5.0 s</b>.   (4)</p>
+
+<div class="mm-warn">
+<p><b>Two defects and one physiological mismatch, all of which this section owns.</b></p>
+<ol>
+<li><b>The respiratory frequency is a dead parameter.</b>
+<code>simulate_trial</code> carries the keyword <code>breath_hz=0.30</code> in its
+signature at <code>directional_sim.py</code>:266. A grep over the entire repository
+finds that identifier on <b>exactly that one line</b>: it is never read, never
+passed to <code>draw_motion</code> or <code>draw_contact_z</code>, and has no effect
+on any result in this report. The model has no configurable respiratory frequency.
+This is a sixteenth defect and it is reported here for the first time. It is
+cosmetic in the sense that no published number changes; it is not cosmetic in the
+sense that a reader — or an author — would reasonably believe the
+respiratory rate had been varied, and it has not been.</li>
+<li><b>(4) is an assumption, not a derivation.</b> The alternative reading —
+that the code encodes 0.30 cycles per 4 samples at some unstated <code>Δt</code>
+— is equally consistent with the source. Under that reading the frame rate is
+a free design parameter that this project does not constrain at all, and every
+number in this section that depends on <code>Δt</code> is a worked example
+rather than a requirement.</li>
+<li><b>0.30 Hz is 18 breaths per minute, an older-child or adult rate.</b> The target
+population is roughly 1–5 years old, where quiet respiration is commonly
+20–30 breaths per minute, i.e. 0.33–0.50 Hz. (This is a recollection of
+standard pediatric vital-sign ranges, not a citation; no reference was consulted.)
+If the intended rhythm is pediatric, then holding the code's <code>0.30·t/4</code>
+form fixed forces <code>Δt = 0.25 × (0.30 / f<sub>resp</sub>)</code>,
+which is 0.15–0.23 s, a frame rate of 4.4–6.7 Hz and a window of
+3.0–4.5 s. Section 5's bandwidth numbers move by up to 2.2 dB across that
+range. Alternatively, if 4 Hz is taken as a fixed design choice, then the model is
+simulating a slower respiration than the patients will present, which makes the
+motion confounder in Study 6 <i>easier</i> than reality at fixed excursion amplitude,
+because fewer respiratory cycles fall in the window. Neither reading is established
+and the project cannot currently distinguish them.</li>
+</ol>
+<p>One consequence is worth carrying forward regardless of which reading is right:
+at 0.30 Hz a 5.0 s window contains only <b>1.5 respiratory cycles</b>. That is far
+too few for the estimator to average the respiratory term away, which is a
+precondition for the mechanism proposed in section 9.</p>
+</div>
+
+<p>The dwell per measurement, not the frame period, is what sets the noise
+bandwidth, and the two differ by more than an order of magnitude here. At
+<code>N = 8</code> the odd outer gaps <code>G ∈ {3, 5, 7}</code> give
+<code>(8−3) + (8−5) + (8−7) = 9</code> zones per strip and
+<b>18 zones total</b> — exactly the <code>n_zones = 18</code> recorded at every
+level of the V3 refinement sequence. In <code>measure_zones</code> each zone has its
+own drive pair and its own sense pair, so a real instrument cannot share one
+injection across several zones: <b>18 current injections per frequency per frame</b>
+is the floor. Then</p>
+
+<p><code>τ<sub>dwell</sub> = Δt / (n<sub>zones</sub> × F<sub>seq</sub>)</code>
+  (5)    
+<code>ENBW = 1 / (2 τ<sub>dwell</sub>)</code>   (6)</p>
+
+<p>where <code>F<sub>seq</sub></code> is the number of frequencies acquired
+<i>sequentially</i> (1 if the two carriers are injected simultaneously and separated
+in the demodulator, which is standard practice in multi-frequency bioimpedance).</p>
+
+<table class="mm-t">
+<caption>Dwell and noise bandwidth per tetrapolar measurement, at
+<code>Δt = 0.25 s</code>, <code>n<sub>zones</sub> = 18</code></caption>
+<tr><th>acquisition scheme</th><th>injections per frame</th>
+<th>τ<sub>dwell</sub></th><th>carrier cycles at 50 kHz</th><th>ENBW</th></tr>
+<tr><td>Studies 5 and 6, <code>F = 2</code>, sequential frequencies</td>
+<td>36</td><td>6.94 ms</td><td>347</td><td><b>72.0 Hz</b></td></tr>
+<tr><td>Study 1, <code>F = 1</code> (<code>ds.FREQS = ds.FREQS[:1]</code>, 50 kHz only)</td>
+<td>18</td><td>13.9 ms</td><td>694</td><td><b>36.0 Hz</b></td></tr>
+<tr><td><code>F = 2</code>, simultaneous dual-frequency excitation</td>
+<td>18</td><td>13.9 ms</td><td>694</td><td>36.0 Hz per channel</td></tr>
+<tr><td>pediatric variant, <code>Δt = 0.15 s</code>, <code>F = 2</code> sequential</td>
+<td>36</td><td>4.17 ms</td><td>208</td><td>120 Hz</td></tr>
+</table>
+
+<div class="mm-warn">
+<p><b>Correction to an earlier draft of this section.</b> A previous version quoted
+<code>ENBW = 1/(2Δt) = 2 Hz</code>, using the <i>frame period</i> as the
+integration time in the same paragraph in which it derived a 6.9 ms per-measurement
+dwell. Those two statements are mutually contradictory and the error was a factor of
+36 in noise power, 15.6 dB, propagated into every noise-density figure in the
+hardware comparison. The referent for every hardware claim in this section is
+<b>τ<sub>dwell</sub> = 6.94 ms and ENBW = 72.0 Hz</b> for Studies 5 and 6, and
+<b>13.9 ms / 36.0 Hz</b> for Study 1. The qualitative conclusion of section 6
+survives — the electronic-noise margin is still roughly 40 dB — but it
+now rests on correct arithmetic. Note also that the ENBW is study-dependent in
+exactly the way section 3 is careful about for <code>√F</code>, and the earlier
+draft was careful there and careless here.</p>
+</div>
+
+<div class="mm-warn">
+<p><b>A modelling artefact worth designing out.</b> The model solves all 18 zones at
+a single instant per frame. A real instrument acquires them sequentially, and
+<code>tetrapolar_zones</code> emits them in order of increasing <code>k</code> within
+each gap <code>G</code> — that is, monotonically along <code>z</code>. If a
+build acquired in list order, every frame would embed a fixed arrival-time ramp along
+the strip: a fake travelling wave with a sign fixed by whichever way the multiplexer
+scans. Its size, computed correctly, is small. A five-zone <code>G = 3</code> aperture
+spans <b>four</b> intervals, not five. The bias on the fitted slope is the per-zone
+time step expressed in frames, divided by the true adjacent-zone lag, and the true
+lag follows from V3's converged slope of 1.438 samples·cm<sup>−1</sup>
+times the electrode pitch:</p>
+<table class="mm-t">
+<tr><th>scan order</th><th>per-zone step</th><th>step in frames</th>
+<th>true adjacent-zone lag</th><th>slope bias</th></tr>
+<tr><td><code>F = 2</code> frequency-major (all zones at 50 kHz, then all at 100 kHz), 16 cm span</td>
+<td>6.94 ms</td><td>0.0278</td><td>3.29 frames (2.286 cm pitch)</td><td>0.85%</td></tr>
+<tr><td><code>F = 2</code> zone-major (both carriers per zone before moving on), 16 cm span</td>
+<td>13.9 ms</td><td>0.0556</td><td>3.29 frames</td><td>1.69%</td></tr>
+<tr><td>Study 1, <code>F = 1</code>, 12 cm span</td>
+<td>13.9 ms</td><td>0.0556</td><td>2.47 frames (1.714 cm pitch)</td><td>2.25%</td></tr>
+</table>
+<p>The end-to-end skew across the aperture is 4 × 6.94 ms = 27.8 ms in the best
+case and 55.6 ms in the worst, against an end-to-end true lag of 3.3 s (16 cm span).
+The bias is small under every variant, but it is <i>sign-definite</i>, and zone-major
+scanning — the more natural build, since it avoids retuning the demodulator per
+sample — is twice as bad as frequency-major. The fix is free: ping-pong or
+randomise the acquisition order per frame. This has not been simulated.</p>
+</div>
+
+<h4>3. What the estimator actually sees, and what the variance arithmetic hides</h4>
+
+<p>The estimator does not consume <code>dZ</code> directly. <code>zone_series</code>
+takes the <b>real part</b> and averages over frequency,
+<code>ser = dZ.real.mean(axis=1)</code>; <code>_strip_aperture_stats</code> then
+subtracts the across-zone mean when <code>nz ≥ 3</code> and the temporal mean
+unconditionally. Propagating (3) through those operations:</p>
+
+<ul>
+<li>Taking the real part discards the imaginary noise, leaving standard deviation
+<code>σ<sub>n</sub></code> per component, not
+<code>√2 σ<sub>n</sub></code>.</li>
+<li>Averaging over <code>F</code> frequencies divides the <i>noise</i> standard
+deviation by exactly <code>√F</code>, because the draws at the two frequencies
+are independent. It does <b>not</b> divide the SNR by <code>√F</code>, because
+the two frequencies do not carry the same signal. For two frequencies whose real
+signal components have correlation ρ and comparable magnitude, the SNR gain is
+<code>√(1 + ρ)</code>, i.e. between 0 and 3.01 dB, reaching 3.01 dB only at
+ρ = 1. The physical inputs suggest ρ is close to 1 — <code>Re(dZ)</code>
+tracks σ, and <code>metrics_verify.json</code> records σ<sub>muscle</sub>
+moving only 0.3400 → 0.3441 S·m<sup>−1</sup> between 50 and 100 kHz
+— but the permittivities move much further (ε<sub>r</sub> for kidney
+30000 → 27991, with ωε/σ going 0.759 → 1.399), so the
+complex response is not frequency-flat and ρ is not 1 by construction. <b>The
+model does not log it.</b> The <code>√F</code> term below is therefore an upper
+bound on the realised gain, not the realised gain.</li>
+<li>Subtracting the across-zone mean of <code>n</code> zones removes
+<code>n<sub>cor</sub></code> exactly and reduces the independent variance by
+<code>(1 − 1/n)</code>.</li>
+</ul>
+
+<p>So the effective per-zone, per-frame noise standard deviation on the quantity the
+arrival-time fit regresses is, at best,</p>
+
+<p><code>σ<sub>eff</sub> ≤ σ<sub>n</sub> · √(1/F) ·
+√(1 − 1/n)</code>   (7)</p>
+
+<p>For <code>F = 2</code> and a five-zone aperture,
+<code>σ<sub>eff</sub> = 0.632 σ<sub>n</sub></code>, i.e. 3.98 dB of
+apparent improvement; for <code>F = 1</code> and five zones, 0.894, i.e. 0.97 dB. The
+nominal 60 dB is therefore about <b>64.0 dB</b> at the point of use in Studies 5 and 6
+and about <b>61.0 dB</b> in Study 1, and the two differ by a study-dependent 3 dB that
+appears nowhere else in this report. "SNR = 60 dB" is a label on an injection point,
+not a property of the estimator's input.</p>
+
+<div class="mm-warn">
+<p><b>(7) counts a benefit and omits the cost that comes with it, and the cost is the
+same mechanism this section relies on twice more.</b> Subtracting the across-zone mean
+does not merely shrink the variance; it makes the residuals <i>dependent</i>. For
+zone-mean-removed Gaussian residuals,</p>
+<p><code>var(ñ<sub>i</sub>) = σ<sup>2</sup>(1 − 1/n)</code>,
+  <code>cov(ñ<sub>i</sub>, ñ<sub>j</sub>) = −σ<sup>2</sup>/n</code>
+for <code>i ≠ j</code>, giving a pairwise correlation of exactly
+<code>−1/(n−1)</code>: <b>−0.25</b> for a five-zone aperture and
+<b>−0.50</b> for a three-zone one.</p>
+<p><code>_strip_aperture_stats</code> then cross-correlates <code>ser[0]</code> against
+every <code>ser[j]</code>. A shared negative component contributes a
+<i>negative</i> correlation at lag zero for every pair. Since <code>xcorr_lag</code>
+selects <code>argmax(c)</code> and not <code>argmax(|c|)</code>, a negative lag-zero
+contribution does not merely reduce the peak — it can push the selected peak
+away from zero entirely. That is structurally the same anti-phase mechanism invoked in
+section 9 to explain the empty-window false-positive floor. The section cannot claim
+the variance benefit of (7) and disown the correlation it creates: they are one
+operation. The honest position is that mean subtraction is still clearly correct
+(without it, common-mode terms dominate the lag-zero peak and the travelling term is
+invisible), that its variance benefit is real but small, and that it injects a
+structured negative coupling of magnitude <code>1/(n−1)</code> whose consequence
+for <code>xcorr_lag</code> has never been measured. Measuring it is item 3 in section
+11 and costs one line of code.</p>
+</div>
+
+<h4>4. Unit consistency of the mixed cm / (S·m<sup>−1</sup>) system</h4>
+
+<p>Turning a fractional noise floor into an instrument specification requires reading
+the model's transfer impedance in ohms, and reading <code>z0</code> in
+Ω·cm<sup>2</sup>. These are <b>one</b> computation, not two, and an
+earlier draft of this section made the mistake of settling the first in one subsection
+and then "discovering" a 100× problem with the second several subsections later.
+The system assembled in <code>CEM3D._assemble</code> is a single matrix mixing three
+blocks, and consistency has to hold across all three or none.</p>
+
+<ul>
+<li><b>Stiffness.</b> <code>∫σ∇u·∇v dV</code> with mesh
+coordinates in centimetres and admittivities in S·m<sup>−1</sup>. The
+integral carries one net power of length, so
+<code>K<sub>num</sub> = σ<sub>SI</sub> L<sub>cm</sub> = 100 ×
+(σL)<sub>SI</sub> = 100 K<sub>SI</sub></code>.</li>
+<li><b>Electrode conductance.</b> <code>Cdiag[l] = self.area[l] / zc[l]</code>
+(<code>eit3d.py</code>:129) with <code>area</code> accumulated from boundary facets in
+cm<sup>2</sup>, so <code>area<sub>num</sub> = 10<sup>4</sup> area<sub>SI</sub></code>.</li>
+<li><b>Coupling block.</b> <code>Bcols[:, l] = −(self._c[l] / zc[l])</code>,
+whose numerator is the facet row-sum of the same electrode mass matrix and therefore
+scales identically to <code>area</code>.</li>
+</ul>
+
+<p>For the assembled system to be a consistent non-dimensionalisation, the contact
+blocks must carry the same factor 100 as the stiffness:
+<code>10<sup>4</sup> area<sub>SI</sub> / z<sub>num</sub> = 100 ×
+area<sub>SI</sub> / z<sub>SI</sub></code>, hence</p>
+
+<p><code>Z<sub>phys</sub> = 100 × Z<sub>model</sub></code>  and 
+<code>z<sub>phys</sub> = z<sub>num</sub> / 100 Ω·m<sup>2</sup> = 100
+× z<sub>num</sub> Ω·cm<sup>2</sup></code>   (8)</p>
+
+<p>Both halves of (8) follow from the same requirement and stand or fall together. The
+drawn range <code>z0 ~ U(5, 20)</code>, labelled Ω·cm<sup>2</sup>, is
+therefore approximately <b>500–2000 Ω·cm<sup>2</sup></b>.</p>
+
+<div class="mm-warn">
+<p><b>The audit invalidates the code's stated physical rationale, not merely a label,
+and that is the more serious finding.</b> <code>draw_contact_z</code>'s docstring
+argues: "the meaningful quantity is the dimensionless group zσ/L … with
+σ ~ 0.34 and a mesh in cm, that group reaches unity near z ~ 3, and real
+skin-electrode impedance is comparable to or larger than the tissue spreading
+resistance, so z0 of order 5-20 is the physical regime." The first clause is correct
+and unaffected: the group
+<code>z<sub>phys</sub>σ/L = z<sub>num</sub>σ/L<sub>cm</sub> ∈ [1.7,
+6.8]</code> for σ = 0.34 and L = 1 cm is <i>invariant</i> under (8), so the
+physics of the V4 sweep is well posed and no simulated result changes. But the second
+clause reasons in numeric units about a physical regime, and under (8) it is in fact
+arguing for 500–2000 Ω·cm<sup>2</sup>. That is a <b>dry or textile
+electrode</b> regime, not a wet gel one. Any statement in this project about
+acceptable skin preparation, or about which electrode technology the SNR budget
+assumes, that was derived from the "5–20" label is wrong.</p>
+<p>Two things must be said and neither is resolved. First, this is an arithmetic audit
+performed for this section, not a measured result; it should be independently checked
+by dimensional analysis of <code>_assemble</code> before it is relied on. Second, it is
+tempting to conclude that a gel-electrode build would do <i>better</i> than V4's
+measured rejection because <code>z</code> would be smaller, and that conclusion is
+<b>not</b> supported: <code>draw_contact_z</code>'s own docstring warns that values
+~100× smaller make the electrodes near-ideal shunts, suppressing the bolus signal
+while maximising sensitivity to contact drift, and V4's full sweep (which includes
+<code>z0 = 1</code>) does not resolve monotonicity because it reports only a
+peak-to-peak spread. The direction of error under a change of electrode technology is
+unknown. A bench measurement of specific contact impedance at 50–100 kHz for the
+intended electrode is the only thing that settles it.</p>
+</div>
+
+<h4>5. The absolute transfer impedance is a distribution, not a mean</h4>
+
+<p>An earlier draft translated the SNR assumption into hardware using a single number,
+<code>mean|Z| = 0.2691</code> at the finest V3 mesh, giving 26.9 Ω via (8). That
+is not a specification, because the per-zone values are strongly bimodal and the mean
+falls in a gap that no zone occupies. The 18 values recorded in
+<code>v3_mesh_convergence.levels[-1].zone_absZ</code> (5675 nodes, frame 0, 50 kHz)
+sort into three tight aperture clusters:</p>
+
+<table class="mm-t">
+<caption>Per-aperture standing transfer impedance, finest V3 mesh (16 cm span,
+<code>N = 8</code>, <code>z<sub>center</sub> = 0.50</code>). Model units
+×100 → ohms by (8).</caption>
+<tr><th>aperture <code>G</code></th><th>zones</th><th>|Z| model units (min – max)</th>
+<th>mean</th><th>→ ohms (min – max)</th><th>feeds the estimator?</th></tr>
+<tr><td>3 (narrow, shallow)</td><td>10</td><td>0.3166 – 0.4576</td><td>0.3747</td>
+<td>31.7 – 45.8 Ω</td><td>yes, 5 zones per strip</td></tr>
+<tr><td>5 (wide, deep)</td><td>6</td><td>0.1230 – 0.1726</td><td>0.1481</td>
+<td><b>12.3</b> – 17.3 Ω</td><td>yes, 3 zones per strip</td></tr>
+<tr><td>7 (widest, deepest)</td><td>2</td><td>0.0968 – 0.1104</td><td>0.1036</td>
+<td><b>9.7</b> – 11.0 Ω</td><td>acquired but discarded (<code>nz < 2</code>)</td></tr>
+<tr><td>all 18</td><td>18</td><td>0.0968 – 0.4576</td><td>0.2691 (median 0.3209)</td>
+<td>9.7 – 45.8 Ω (mean 26.9, median 32.1)</td><td>—</td></tr>
+</table>
+
+<p>Three consequences follow, and they are the reason the mean was the wrong statistic
+to publish.</p>
+
+<ul>
+<li><b>The spread is 4.7×, i.e. 13.5 dB, and the mean sits in the empty gap
+between 0.173 and 0.317.</b> Because the injected noise is <i>fractional and
+per-zone</i>, every zone receives the same 1000 ppm at 60 dB but implies a different
+absolute <code>δZ</code>. The <b>ppm requirement is aperture-independent; the
+millivolt and milliohm requirements are not.</b></li>
+<li><b>The binding zone is the widest aperture, which is the one the design's sensing
+depth depends on.</b> <code>direction_features</code>' docstring makes the case that
+tetrapolar depth scales with electrode separation and that wide apertures are the
+reason more electrodes help. Those are precisely the low-|Z| zones. Specifying the
+front end against the mean flatters exactly the measurement the design cannot afford
+to lose.</li>
+<li><b>The binding number depends on whether the <code>G = 7</code> zones are built.</b>
+<code>measure_zones</code> returns all 18, but <code>_strip_aperture_stats</code>
+discards the single-zone <code>G = 7</code> aperture, so at <code>N = 8</code> the
+hardest zone that actually feeds a decision is <code>G = 5</code> at 12.3 Ω.
+Acquiring the <code>G = 7</code> zones anyway — as the model does — sets the
+requirement at 9.7 Ω. The table below uses <b>9.7 Ω</b>, the more
+conservative of the two; using 12.3 Ω relaxes every voltage figure by 2.1 dB.
+Specifying against the 26.9 Ω mean would have relaxed it by <b>8.9 dB</b>, which
+is a real hardware error, not a rounding one.</li>
+</ul>
+
+<p>The requirement implied by (2) at the binding zone is a per-zone, per-frame
+impedance resolution of</p>
+
+<p><code>δZ<sub>min</sub> = σ<sub>n</sub> · |Z|<sub>min</sub> =
+10<sup>−3</sup> × 9.68 Ω = <b>9.7 mΩ</b> = <b>1000 ppm</b></code>
+  (9)</p>
+
+<table class="mm-t">
+<caption>Assumed SNR translated into an instrument specification. Binding case:
+<code>|Z|<sub>min</sub> = 9.68 Ω</code>, 1 mA drive
+(<code>V<sub>sense</sub> = 9.68 mV</code>), ENBW 72.0 Hz (<code>F = 2</code>
+sequential). Mean-zone column shown only to expose the 8.9 dB gap.</caption>
+<tr><th>SNR (dB)</th><th>σ<sub>n</sub></th><th>ppm of |Z| (all zones)</th>
+<th>δZ at binding zone</th><th>δV at binding zone, 1 mA</th>
+<th>input-referred density, 72 Hz</th><th>δV at <i>mean</i> zone (flattering)</th></tr>
+<tr><td>40</td><td>1.00×10<sup>−2</sup></td><td>10 000</td><td>96.8 mΩ</td><td>96.8 µV</td><td>11.4 µV/√Hz</td><td>269 µV</td></tr>
+<tr><td>50</td><td>3.16×10<sup>−3</sup></td><td>3 162</td><td>30.6 mΩ</td><td>30.6 µV</td><td>3.61 µV/√Hz</td><td>85.1 µV</td></tr>
+<tr><td><b>60</b> (default)</td><td>1.00×10<sup>−3</sup></td><td>1 000</td><td><b>9.7 mΩ</b></td><td><b>9.7 µV</b></td><td><b>1.14 µV/√Hz</b></td><td>26.9 µV</td></tr>
+<tr><td>70</td><td>3.16×10<sup>−4</sup></td><td>316</td><td>3.06 mΩ</td><td>3.06 µV</td><td>0.361 µV/√Hz</td><td>8.5 µV</td></tr>
+<tr><td>80</td><td>1.00×10<sup>−4</sup></td><td>100</td><td>0.97 mΩ</td><td>0.97 µV</td><td>0.114 µV/√Hz</td><td>2.7 µV</td></tr>
+</table>
+
+<p>At Study 1's <code>F = 1</code> the ENBW is 36.0 Hz and the density allowance is
+1.61 µV/√Hz at 60 dB rather than 1.14; at the pediatric
+<code>Δt = 0.15 s</code> variant it is 0.88 µV/√Hz.</p>
+
+<div class="mm-warn">
+<p><b>The V3 non-convergence caveat applies to every absolute number above and only to
+the absolute ones.</b> V3 showed that the absolute transfer impedance does <i>not</i>
+converge: across the five-level sequence <code>mean|Z|</code> takes the values 0.3261,
+0.4737, 0.3024, 0.2383, 0.2691 (23.8–47.4 Ω after (8)), with level-to-level
+errors against the finest mesh of 21.2%, 76.0%, 12.4%, 11.4%. The mechanism is that
+the realised electrode area snaps to boundary facets and changes discontinuously under
+refinement, so <code>|Z|</code> inherits a discretisation artefact that the
+arrival-time slope — a differential timing quantity — does not. Therefore
+the <b>ppm column is safe</b>, because it is defined on the normalised quantity the
+model does converge, while the <b>milliohm and microvolt columns carry at least a
+factor of two of uncertainty</b> and are order-of-magnitude sizing only. The
+<i>ratio</i> between apertures is more trustworthy than either endpoint, because the
+bimodality is present at every refinement level (at the coarsest, 0.099–0.529),
+but it is not verified either. No claim about absolute impedance magnitude is supported
+by this model. A bench phantom measurement of the real standing <code>|Z|</code> would
+retire this and should precede any front-end selection.</p>
+<p>One incidental correction: <code>simulate_trial</code>'s in-code comment records an
+inter-strip asymmetry of "~23% less electrode area on one side, 25-57% higher |Z|". At
+the finest V3 mesh the two strips' mean <code>|Z|</code> differ by only 1.3% (0.2673
+versus 0.2708), though individual matched zones differ by up to 14% (the <code>G = 7</code>
+pair, 0.1104 versus 0.0968). The comment appears to describe a different mesh or span
+than the one V3 reports, and the fractional normalisation defended by that comment is
+independently justified by V3 regardless.</p>
+</div>
+
+<h4>6. Is 60 dB reachable? Yes — but not for the reason, or from the source
+impedance, the earlier draft claimed</h4>
+
+<p>Thermal noise at a differential input is set by the real part of the source
+impedance seen by that input. <b>The transfer impedance is not that quantity.</b>
+<code>Z</code> here is a four-terminal ratio <code>V<sub>sense</sub>/I<sub>drive</sub></code>
+between two <i>disjoint</i> electrode pairs; it is not a resistance in the
+fluctuation–dissipation sense and it is not what the amplifier looks into. An
+earlier draft computed <code>√(4kTR)</code> with R = 26.9 Ω and reported
+0.68 nV/√Hz. That is the wrong physics and it is retracted.</p>
+
+<p>The correct source impedance is the two sense electrode–skin interfaces in
+series with the local spreading resistance. From the §4 audit the specific contact
+impedance is 500–2000 Ω·cm<sup>2</sup>. The nominal electrode patch
+in <code>place_strips</code> is <code>2 × arc_half × R = 2(0.30)(5.5) = 3.3
+cm</code> circumferentially by <code>2 × 0.40 × pitch</code> axially
+(1.83 cm at a 16 cm span, 1.37 cm at 12 cm), giving a nominal 4.5–6.0
+cm<sup>2</sup>; the realised area is smaller because it snaps to boundary facets.
+Spreading resistance for a ~1.3 cm-radius patch on σ ≈ 0.34
+S·m<sup>−1</sup> is <code>1/(4σa) ≈ 58 Ω</code> per
+electrode. So</p>
+
+<p><code>Re{Z<sub>source</sub>} ≈ 2 × (z<sub>phys</sub>/A +
+R<sub>spread</sub>) ≈ 0.2 – 1.2 kΩ</code>, taken as <b>1 kΩ</b>
+below   (10)</p>
+
+<p>with the upper end reached if the realised area is small or the specific contact
+impedance is at the top of the audited range. Two qualifications, both of which cut in
+the design's favour and neither of which is measured: at 50–100 kHz the electrode
+interface is substantially <i>capacitive</i>, and Johnson noise depends on the real
+part only, so (10) overstates the thermal term; and the drive-side contact impedance
+does not appear at the sense input at all.</p>
+
+<table class="mm-t">
+<caption>Electronic noise floors against the binding allowance of 1.14
+µV/√Hz (60 dB, <code>|Z|<sub>min</sub></code> = 9.68 Ω, ENBW 72.0 Hz,
+1 mA)</caption>
+<tr><th>term</th><th>value</th><th>input-referred density</th><th>margin below allowance</th></tr>
+<tr><td>Johnson noise of <code>Re{Z<sub>source</sub>}</code>, 1 kΩ, 310 K</td>
+<td><code>√(4kTR)</code></td><td>4.14 nV/√Hz</td><td>48.8 dB</td></tr>
+<tr><td>same at 2 kΩ (worst plausible)</td><td>—</td><td>5.85 nV/√Hz</td><td>45.8 dB</td></tr>
+<tr><td>amplifier input <i>voltage</i> noise, deliberately mediocre part</td>
+<td>10 nV/√Hz</td><td>10.0 nV/√Hz</td><td>41.1 dB</td></tr>
+<tr><td>amplifier input <i>current</i> noise × <code>Z<sub>source</sub></code></td>
+<td>1 pA/√Hz × 1 kΩ</td><td>1.0 nV/√Hz</td><td>61.1 dB</td></tr>
+<tr><td><b>root-sum-square of the three</b></td><td>—</td><td><b>10.9 nV/√Hz</b></td><td><b>40.4 dB</b></td></tr>
+</table>
+
+<p>Equivalently: at the binding zone, thermal physics alone would permit an SNR of
+about <b>109 dB</b>, and a mediocre real front end about <b>100 dB</b>, against the
+<b>60 dB</b> assumed. (The earlier draft's figures of 88.9 dB of margin and "roughly
+149 dB permitted" were wrong on both counts — wrong source resistance and wrong
+bandwidth — and are withdrawn. The corrected margin is smaller and still
+comfortable.)</p>
+
+<p>The honest reading of those numbers is not "60 dB is easy". It is that <b>60 dB is
+not an electronic-noise specification at all</b>. Nothing about resolving 1000 ppm on a
+10–46 Ω transfer impedance with a 6.9 ms dwell is hard; lock-in
+demodulation of a 50 kHz carrier over 347 cycles is a textbook measurement. What is
+hard, and what 60 dB is silently standing in for, is <b>everything that is not
+stationary white noise</b>: electrode artefact, motion, drift, cardiac pulsatility,
+interference and systematic error. Section 8 lists what the model omits from that
+category. The figure 60 dB happens to sit in the range research EIT systems typically
+quote as an end-to-end system SNR <i>including</i> artefact, which is why it is not an
+unreasonable placeholder — but that is a recollection of the literature, not a
+citation, and no datasheet was consulted at any point in this project. The model's
+noise is the easy kind, injected at a level plausible for the hard kind.</p>
+
+<p>Note also the term the earlier draft omitted entirely and which dominates once the
+source impedance is kilohms rather than tens of ohms: <b>amplifier input current
+noise</b>. At 26.9 Ω it is irrelevant; at 1–2 kΩ a 5 pA/√Hz part
+would contribute 5–10 nV/√Hz and become co-dominant with the voltage-noise
+term. For a dry or textile electrode front end — which §4 says is the regime this
+model is actually in — input current noise at 100 kHz is the specification that
+matters, and this project has never named it. It is item 8 in section 11.</p>
+
+<div class="mm-warn">
+<p>The drive amplitude is a free parameter with <b>exactly zero</b> modelled effect.
+<code>measure_zones</code> forms <code>(U[p] − U[q]) / amp</code> while
+<code>solve_drives</code> builds a right-hand side proportional to <code>amp</code>;
+the system is linear, so <code>amp</code> cancels identically and <code>amp = 1.0</code>
+is never varied in any run script. Consequently the project places <b>no constraint
+whatsoever</b> on injected current, and therefore none on patient auxiliary current,
+electrode current density, or the current-versus-SNR trade that dominates real
+bioimpedance front-end design. Every microvolt figure in this section scales linearly
+with the assumed 1 mA and is otherwise unconstrained. The usual regulatory ceiling on
+patient auxiliary current at 50 kHz is well above 1 mA, so we do not expect this to
+bind, but that statement is a recollection of IEC 60601-1's frequency-scaled limit and
+has not been checked against the standard, and pediatric application may carry
+additional constraints this project has not investigated. Anyone sizing hardware from
+this report must derive the current budget independently.</p>
+</div>
+
+<h4>7. Contact impedance: correcting an overclaim, and stating what V4 does
+<i>not</i> measure</h4>
+
+<p>The contact impedance is not a constant. <code>draw_contact_z</code> draws a
+per-electrode base <code>z0 ~ U(5, 20)</code> and modulates it in time:</p>
+
+<p><code>z<sub>l</sub>(t) = z0<sub>l</sub> · clip[ (1 + (b(t) + d(t))(0.5 + 0.5
+cosφ<sub>l</sub>)) · (1 + 0.03·A·ξ<sub>l</sub>(t)), 0.7,
+1.4 ]</code>   (11)</p>
+
+<p>with <code>b(t) = 0.03 sin(2π(0.30)t/4 + ψ)</code> a respiratory modulation,
+<code>d(t)</code> a linear drift ramping to an <code>N(0, 0.03)</code> endpoint,
+<code>φ<sub>l</sub> ~ U(0, 2π)</code> an independent per-electrode phase, and
+<code>ξ</code> an independent Gaussian term scaling with the motion amplitude
+<code>A</code>. Two features matter. First, the drift and respiratory terms are
+<b>not</b> scaled by <code>A</code> — they are present even at
+<code>motion_amp = 0</code>. Second, the modulation depth
+<code>g<sub>l</sub> = 0.5 + 0.5cosφ<sub>l</sub></code> is random <i>per electrode</i>,
+so the disturbance is spatially structured along the strip.</p>
+
+<p>The report elsewhere states that contact impedance "largely drops out" of a
+tetrapolar measurement, and <code>strip3d.py</code>'s module docstring says "contact
+impedance largely rejected". <b>V4 shows this is an overclaim and it must be
+corrected.</b> Sweeping a uniform <code>z0</code> and comparing the tetrapolar transfer
+impedance against a like-for-like bipolar proxy (the driven pair's own potential
+difference, same electrodes, same solve):</p>
+
+<table class="mm-t">
+<caption>V4, contact-impedance sensitivity: mean relative peak-to-peak spread per zone
+over <code>world.zones[:8]</code> (strip 0, <code>G = 3</code> and <code>G = 5</code>)</caption>
+<tr><th>sweep range</th><th>tetrapolar</th><th>bipolar proxy</th><th>rejection factor</th></tr>
+<tr><td>full sweep, z0 ∈ {1, 5, 10, 20, 40}</td><td>0.4810</td><td>1.6412</td><td>3.41×</td></tr>
+<tr><td>modelled range, z0 ∈ {5, 10, 20}, matching U(5, 20)</td><td><b>0.1621</b></td><td>0.7031</td><td><b>4.34×</b></td></tr>
+</table>
+
+<p>A 16.2% residual sensitivity is not negligible and cannot be described as "largely
+dropping out". The correct statement is: <b>tetrapolar sensing reduces
+contact-impedance sensitivity by about a factor of four over the modelled range; it
+does not eliminate it.</b> Expressed as a log-sensitivity over the 4:1 sweep,</p>
+
+<p><code>a ≡ ∂ln|Z<sub>tetra</sub>| / ∂ln z ≈ 0.1621 / ln 4 =
+0.117</code>   (12)</p>
+
+<p>which is the number section 9 needs. The mechanism is standard and worth stating for
+the device engineer: four-wire sensing rejects contact impedance only to the extent
+that the sense electrodes draw no current, and in the CEM they draw a little, through
+the Robin term <code>u + z<sub>l</sub>σ∂u/∂n = U<sub>l</sub></code>
+assembled as <code>M<sub>l</sub>/z<sub>l</sub></code> in <code>CEM3D._assemble</code>.
+The residual scales with the <i>finite</i> input impedance of the sense path, which in
+the model is set by the electrode geometry and in hardware is set by the amplifier and
+the cable. A front end whose differential input impedance at 100 kHz is not enormously
+larger than the electrode impedance will do <i>worse</i> than 4.34×, not better.
+The design needs a stated input-impedance specification and does not have one.</p>
+
+<div class="mm-warn">
+<p><b>Two limits of V4 that must be stated before its number is reused.</b></p>
+<ol>
+<li><b>V4 sweeps a <i>uniform</i> contact impedance</b> (<code>zc = np.full(world.L,
+z0)</code>), so 0.1621 is the <b>common-mode</b> contact sensitivity. The disturbance
+that (11) actually injects is <i>per-electrode and spatially structured</i>, and the
+quantity that governs its effect on the estimator is the <b>differential</b>
+sensitivity — how much a zone's transfer impedance responds when one of its four
+electrodes moves and the others do not. <b>No verification in this project measures
+that.</b> The first-order estimates in section 9 apply (12), a common-mode
+log-sensitivity, to a differential perturbation, which is not strictly licensed. They
+establish an order of magnitude and nothing more. A V5 sweeping one electrode at a
+time would cost a handful of solves and would close this.</li>
+<li><b>V4 covers 8 of 18 zones</b>: strip 0 only, and only the <code>G = 3</code> and
+<code>G = 5</code> apertures. The widest aperture and the entire contralateral strip are
+untested for contact rejection.</li>
+</ol>
+</div>
+
+<h4>8. What is not modelled</h4>
+
+<p>The following are absent from the model entirely, ranked by expected threat to a
+direction-from-timing estimator. Each is listed with the mechanism by which it would
+reach the estimator, because "not modelled" is only useful if it comes with a reason to
+care.</p>
+
+<table class="mm-t">
+<caption>Unmodelled error sources</caption>
+<tr><th>Source</th><th>Path to the estimator</th><th>Why it threatens <i>this</i> design specifically</th></tr>
+
+<tr><td><b>Cardiac-synchronous impedance pulsatility</b></td>
+<td>Blood volume and velocity modulate tissue admittivity at the heart rate. In a
+1–5 year old that is roughly 1.5–2.5 Hz at rest. This is the entire physical
+basis of impedance cardiography and impedance plethysmography, where thoracic
+ΔZ/Z of order 0.1–1% is routinely measured. (Recollection of the literature;
+no citation was consulted, and no flank-specific amplitude is claimed.)</td>
+<td><b>The largest omission by amplitude.</b> 0.1–1% is 1000–10 000 ppm
+against an assumed 1000 ppm noise floor — one to two orders of magnitude above
+budget, coherent frame to frame, and spatially structured along <code>z</code> because
+the aorta and renal vasculature run craniocaudally. Two refinements matter and cut in
+opposite directions. (i) The <i>pulse wave</i> itself is not a direction confounder at
+this frame rate: at 4–8 m·s<sup>−1</sup> it crosses a 16 cm strip in
+20–40 ms, which is 0.08–0.16 of one frame, against a true adjacent-zone
+bolus lag of 3.3 frames — so it presents as an essentially simultaneous event.
+(ii) <b>Aliasing is the real threat.</b> A 1.5–2.5 Hz component sampled at 4 Hz
+sits at or above Nyquist; 2.5 Hz folds to 1.5 Hz, and because heart rate wanders
+(respiratory sinus arrhythmia, crying, bladder filling discomfort) the aliased component
+<i>drifts slowly</i> and lands squarely in the 0–2 Hz band the bolus occupies. If
+its spatial weighting along <code>z</code> is smooth — and vascular anatomy says it
+will be — it produces exactly the high-<code>lin</code>, gate-passing artefact of
+section 9. A testable prediction: because the pulse propagates <i>away</i> from the
+heart, i.e. toward decreasing <code>z</code> on the flank, an unaliased cardiac ramp
+would bias the estimator toward <b>antegrade</b>, eroding sensitivity to reflux rather
+than manufacturing false positives. Neither the amplitude, the spatial structure, nor
+the sign has been simulated.</td></tr>
+
+<tr><td><b>Triboelectric and cable-motion artefact</b></td>
+<td>Charge generated by flexing coaxial or ribbon cable is injected directly into the
+high-impedance sense pair; there is no low-impedance node to shunt it.</td>
+<td>The most dangerous omission after cardiac. It is <b>motion-correlated</b>,
+broadband, and <b>per-channel</b>, so it is neither removed by the across-zone mean
+subtraction nor independent of the confounder the design is already fighting. A cable
+that moves with respiration produces a per-zone disturbance phase-locked to breathing
+and spatially structured — the signature of a travelling wave. Study 6 shows the
+estimator degrades with motion <i>amplitude</i> independent of gradient; this mechanism
+is amplitude-scaled and would compound that.</td></tr>
+
+<tr><td><b>Electrode half-cell potential drift</b></td>
+<td>Tens of millivolts of DC offset per electrode, drifting with sweat, temperature and
+electrode settling, over minutes.</td>
+<td>At 50–100 kHz it is out of band and the demodulator rejects it, so the
+first-order threat is input headroom, not signal. The second-order threat is real: after
+any AC-coupling network, a step in half-cell potential (a child shifting position)
+produces a settling transient in the demodulated baseband — the same sub-hertz
+band as the bolus — and settling transients are monotone in time, which is
+precisely what the arrival-time regression is looking for.</td></tr>
+
+<tr><td><b>Body-as-antenna common-mode pickup</b></td>
+<td>The body couples capacitively to mains wiring; common-mode voltage converts to
+differential through finite CMRR and, dominantly, through the potential-divider effect
+of mismatched electrode impedances.</td>
+<td>The model contains <b>no common-mode source at all</b>, so although it draws
+electrode impedances independently over a 4:1 range (a large real-world mismatch), it
+cannot express the consequence of that mismatch for interference rejection. CMRR
+degrades with frequency, and 100 kHz is the worse of the two bands used. Section 4's
+audit makes this sharper: at 500–2000 Ω·cm<sup>2</sup> the electrode
+impedances are high, and high source impedance with 4:1 mismatch is the classic
+worst case for common-mode-to-differential conversion.</td></tr>
+
+<tr><td><b>Demodulator phase error and phase drift</b></td>
+<td>The estimator uses <b>only the real part</b> (<code>dZ.real</code> in
+<code>zone_series</code>). A demodulation phase error θ rotates the imaginary part
+into the real one.</td>
+<td>See the dedicated treatment below; the earlier draft quantified this from the wrong
+quantity and the number it printed is withdrawn.</td></tr>
+
+<tr><td><b>Mains interference (50/60 Hz and harmonics)</b></td>
+<td>Out of band relative to the carrier and largely removed by synchronous demodulation,
+but it consumes input range, intermodulates, and can alias.</td>
+<td>The specific risk is aliasing. Any residual mains ripple surviving the demodulator's
+low-pass folds into the 0–2 Hz band on sampling, and 50 Hz sampled at 4 Hz lands
+at DC — indistinguishable from drift. Note this is a <i>smaller</i> version of the
+cardiac problem above: mains is at least at a known, stable frequency that a notch can
+track, whereas the cardiac component wanders.</td></tr>
+
+<tr><td><b>ADC quantisation, channel gain mismatch, multiplexer crosstalk, switching
+settling</b></td>
+<td>Ordinary instrumentation non-idealities.</td>
+<td>Mostly benign for a timing estimator, with one exception: settling after a drive
+electrode is switched to sense duty is a known EIT artefact, and the model solves an
+instantaneous steady state per drive, so it cannot represent it at all. The 6.9 ms dwell
+of section 2 is the budget it would have to fit in, and at 1 kΩ source impedance
+that is a real constraint on multiplexer and cable capacitance.</td></tr>
+</table>
+
+<p><b>Demodulator phase error, done correctly.</b> An earlier draft computed the leakage
+from the standing impedance: from V2's recorded example
+<code>Z = 0.3246 − 0.0506j</code>, giving <code>|Im/Re| = 0.1558</code>, and
+concluded that a 1° phase error is "2.7× the entire 60 dB noise budget". Both
+halves of that are wrong and are withdrawn. The estimator does not consume <code>Z</code>;
+it consumes <code>dZ = (Z − Z<sub>ref</sub>)/|Z<sub>ref</sub>|</code>, and
+<code>|Z<sub>ref</sub>|</code> is a magnitude and therefore rotation-invariant, so</p>
+
+<p><code>dZ′ = e<sup>iθ</sup> dZ</code> exactly, and
+<code>Re(dZ′) = Re(dZ)cosθ − Im(dZ)sinθ</code>   (13)</p>
+
+<p>The fractional error on the estimator's input is therefore
+<code>r·tanθ</code> with <code>r = Im(dZ)/Re(dZ)</code>, the
+imaginary-to-real ratio of the <b>bolus perturbation</b> — not the 0.1558 of the
+standing impedance. <b>The model never logs <code>r</code>.</b> Nor can it be bounded
+from the tissue table: the perturbation is the difference between urine
+(<code>ωε/σ = 1.31×10<sup>−4</sup></code> at 50 kHz,
+essentially purely resistive) and the tissue it displaces, which at 50–100 kHz is
+not resistive at all (kidney <code>ωε/σ</code> = 0.759 and 1.399;
+muscle 0.213 and 0.392). <code>r</code> could plausibly lie anywhere between
+10<sup>−4</sup> and order unity and this project has not constrained it. Logging
+it costs one line and is item 4 in section 11.</p>
+
+<p>Second, and independently of the missing ratio: the resulting error is
+<i>proportional to <code>|dZ|</code></i>, so it is a multiplicative gain on the signal,
+whereas <code>σ<sub>n</sub></code> is an additive floor. Comparing the two as if
+they were commensurate ("2.7× the noise budget") is a category error. The argument
+that actually holds is this:</p>
+<ul>
+<li>A <b>static</b> phase error acts as a per-zone multiplicative gain
+<code>(cosθ − r sinθ)</code>. It perturbs the aperture weight
+<code>w = z_baseline × (0.25 + q) × √(dif_energy)</code> at
+<code>directional_sim.py</code>:469 and shifts the relative weighting of zones in the
+arrival-time fit, but it does not shift arrival <i>times</i> and therefore cannot
+change the sign of the slope. It is largely benign, which is what the earlier draft's
+own next sentence conceded while contradicting its headline number.</li>
+<li>A <b>drifting</b> phase error is the threatening case, and it needs its own
+treatment rather than a reuse of the static number. Over the observation window it adds
+an in-band term of size <code>Im(dZ) × Δθ</code>, coherent, slow, and
+per-channel if each zone has its own demodulator. It is additive, it lives in the bolus
+band, and its spatial structure is set by hardware layout. Its magnitude cannot be
+computed here because <code>Im(dZ)</code> is not logged.</li>
+<li>Whether it is rejected at all depends on an architecture choice the project has
+never made: if all zones are multiplexed through one demodulator the drift is common
+mode and the across-zone mean subtraction removes it; if each channel has its own, it is
+not removed. That is item 8 in section 11.</li>
+</ul>
+
+<p>Note what is <i>partially</i> modelled and should not be double-counted: slow
+contact-impedance drift and respiratory contact modulation <b>are</b> present, via (11);
+rigid and non-rigid body motion <b>are</b> present, via <code>draw_motion</code> and the
+<code>grad</code> parameter, and were characterised in Study 6.</p>
+
+<h4>9. The zero-motion false-positive floor, on measured numbers</h4>
+
+<p>Study 6 reports, on empty (no-bolus) windows at <code>motion_amp = 0</code>:</p>
+
+<table class="mm-t">
+<caption>Empty-window behaviour at zero motion, from <code>metrics_motion2.json</code>,
+grid cell <code>a0.0_g0.0</code> (identical at <code>grad</code> = 0, 0.5, 1.0, since
+zero amplitude makes the gradient inert)</caption>
+<tr><th>quantity</th><th>value</th><th>count</th><th>95% Wilson interval</th></tr>
+<tr><td>empty windows per cell (<code>noflow</code> + <code>bladder</code>, 36 each)</td><td>—</td><td><b>n = 72</b></td><td>—</td></tr>
+<tr><td>abstain rate on empty windows</td><td>0.7083</td><td>51 / 72</td><td>—</td></tr>
+<tr><td><b>measured</b> P(pass the <code>lin</code> gate)</td><td><b>0.2917</b></td><td>21 / 72</td><td>—</td></tr>
+<tr><td>false-retrograde rate on empty windows</td><td><b>0.1111</b></td><td>8 / 72</td><td><b>[0.0574, 0.2042]</b> (<code>false_retro_ci</code>)</td></tr>
+<tr><td>implied false-<i>antegrade</i> rate</td><td>0.1806</td><td>13 / 72</td><td>—</td></tr>
+<tr><td>retrograde share of the calls actually made</td><td>0.381</td><td>8 / 21</td><td>[0.19, 0.59]</td></tr>
+<tr><td>mean fused <code>lin</code> on empty windows</td><td>0.2939</td><td>—</td><td>vs <code>LIN_GATE</code> = 0.35</td></tr>
+</table>
+
+<p>Three things follow, and all three replace inferences the earlier draft made.</p>
+
+<ol>
+<li><b>P(pass gate) does not have to be inferred; it is recorded.</b> The earlier draft
+assumed sign-symmetry and back-solved <code>P(pass) = 0.111 × 2 = 0.222</code>.
+The measured value is <b>0.2917</b>, so the symmetric inference was 24% low. The gate's
+specificity against empty windows is 70.8%, not 78%, and the docstring's design target
+("rejecting 71.4% of empty ones", measured at 0.45 cm motion) is met almost exactly at
+zero motion.</li>
+<li><b>The sign asymmetry question is already answered by the data, and the answer is
+"no detectable bias, on an interval far too wide to be reassuring".</b> Of the 21 calls
+made on empty windows, 8 were retrograde and 13 antegrade — a retrograde share of
+38.1%, 95% Wilson interval [19%, 59%], which contains 0.5. A sign-biased false-positive
+floor would be a <i>clinical</i> defect rather than a statistical one, and this is the
+right test for it; it simply cannot be settled at n = 21. If anything the lean is toward
+antegrade, which is the direction the unmodelled cardiac term of section 8 would also
+push.</li>
+<li><b>The floor is a count of eight, and the subsection must be weighted
+accordingly.</b> Every Study 6 figure quoted anywhere in this report is a multiple of
+1/72 on empty windows or 1/72 on travelling windows (36 trials × 2 classes each).
+The 11.1% floor carries a Wilson interval of [5.7%, 20.4%]. That is a fact about the
+detector worth stating, but it cannot carry the weight of "the most interesting number
+in this report", which is how the earlier draft described it, and the report should not
+give Study 1 an explicit interval two subsections later while leaving this one bare. The
+same applies to the amplitude ladder reproduced in section 10: 58.3%, 47.2% and 30.6%
+are all n = 36 or n = 72 cells with intervals of roughly ±12–16 points.</li>
+</ol>
+
+<p>Motion cannot explain the floor: at <code>motion_amp = 0</code>,
+<code>draw_motion</code> returns an identically zero displacement field. Nor is the floor
+amplitude-driven — across the amplitude ladder at <code>grad = 1.0</code> the
+false-retrograde rate goes 0.111, 0.194, 0.167, 0.167, 0.083, which is flat to
+<i>declining</i> with every interval overlapping every other. Whatever generates apparent
+travelling waves out of empty windows is present at rest.</p>
+
+<p><b>Candidate mechanism.</b> Even at zero motion, (11) applies a
+respiratory-plus-drift modulation <code>h(t) = b(t) + d(t)</code> to every electrode,
+weighted by a random per-electrode depth <code>g<sub>l</sub> = 0.5 +
+0.5cosφ<sub>l</sub></code>. Its size can be estimated from (12): with
+<code>|h| ≲ 0.06</code> combining the 3% respiratory term and the
+<code>N(0, 0.03)</code> drift endpoint, and a log-sensitivity of 0.117, the raw
+fractional excursion in <code>|Z|</code> from contact modulation alone is up to
+<code>0.117 × 0.5 × 0.06 ≈ 3.5×10<sup>−3</sup></code>
+— roughly <b>3.5× the injected noise floor</b> at 60 dB and about
+5.5× <code>σ<sub>eff</sub></code>. That is the term the mean subtraction
+has to remove.</p>
+
+<p>The correct algebra for what survives it is not the earlier draft's. There is no
+<code>g<sub>j</sub></code> per zone: <code>draw_contact_z</code> draws
+<code>g<sub>l</sub></code> <b>per electrode</b> (<code>size = world.L</code>), and a
+zone is four electrodes — drive <code>(k, k+G)</code> and sense
+<code>(k+c, k+c+1)</code> with <code>c = (G−1)/2</code>, from
+<code>tetrapolar_zones</code>. To first order</p>
+
+<p><code>δln|Z<sub>j</sub>|(t) = h(t) · w<sub>j</sub></code>, with
+<code>w<sub>j</sub> = Σ<sub>l ∈ zone j</sub> s<sub>jl</sub>
+g<sub>l</sub></code>   (14)</p>
+
+<p>where <code>s<sub>jl</sub> = ∂ln|Z<sub>j</sub>|/∂ln z<sub>l</sub></code> are
+the four per-electrode log-sensitivities, whose <i>sum</i> V4 constrains to
+≈ 0.117 but whose individual values no verification measures (section 7). The
+electrode sharing between zones is aperture-dependent and this matters:</p>
+
+<ul>
+<li><b><code>G = 3</code> (<code>c = 1</code>):</b> zone <code>k</code> uses
+<code>{k, k+1, k+2, k+3}</code> and zone <code>k+1</code> uses
+<code>{k+1, k+2, k+3, k+4}</code> — <b>three of four electrodes shared</b>.
+Consecutive <code>w<sub>j</sub></code> are strongly positively correlated, so the weight
+sequence along <code>z</code> is <b>smooth, not sign-random</b>.</li>
+<li><b><code>G = 5</code> (<code>c = 2</code>):</b> zone <code>k</code> uses
+<code>{k, k+2, k+3, k+5}</code> and zone <code>k+1</code> uses
+<code>{k+1, k+3, k+4, k+6}</code> — only <b>one of four</b> shared, so this
+aperture's weights are much closer to independent.</li>
+</ul>
+
+<p>This cuts in the hypothesis's favour and the earlier draft missed it. The
+<code>G = 3</code> aperture supplies 5 of the 8 usable zones at <code>N = 8</code> and
+carries the longest lever arm, and its smooth weight sequence makes a <i>monotone</i>
+ramp in <code>z</code> — and therefore a high <code>lin</code> and a gate pass
+— substantially more likely than an independent-sign picture would suggest.</p>
+
+<p>The rest of the mechanism runs as follows. (14) is a <b>separable, rank-one</b>
+spatiotemporal perturbation: every zone sees the same time course, scaled differently.
+Separable perturbations should carry no lag information — exactly the argument
+<code>bolus_path</code> makes for why the bolus must not be amplitude-modulated. The
+estimator breaks that argument in two places. First, after across-zone mean subtraction
+zone <code>j</code>'s residual is <code>(w<sub>j</sub> − w̄)h(t)</code>, whose
+weight can be <b>negative</b>. Second, <code>xcorr_lag</code> takes
+<code>argmax(c)</code>, not <code>argmax(|c|)</code>. For a zone whose residual weight
+has the opposite sign to the reference zone, the correlation is negative near lag zero
+and the argmax is pushed out to a large, structured lag. Because <code>w<sub>j</sub></code>
+is smooth in <code>z</code> at <code>G = 3</code>, the sign-flipped zones form a
+contiguous block at one end of the strip, so the resulting arrival-time sequence is a
+step or ramp along <code>z</code>, scores a high <code>lin</code>, passes the gate, and
+returns a confident direction. Note that <code>h(t)</code> over a 5.0 s window at 0.30
+Hz completes only 1.5 cycles and is superposed on a monotone drift, so it is close to a
+one-sided ramp — which makes it more ramp-like, not less.</p>
+
+<div class="mm-warn">
+<p><b>This mechanism is a hypothesis constructed by reading the code and applying a
+common-mode sensitivity to a differential perturbation. It is not measured, and V4 does
+not license the second step</b> (section 7). It is consistent with three independent
+observations — the measured empty-window <code>lin</code> of 0.294 sitting just
+below the 0.35 gate, the 3.5×-noise-floor size estimate above, and the smoothness
+argument from electrode sharing — but consistency is not demonstration. Four cheap
+experiments would settle it, none requiring new physics:</p>
+<ol>
+<li><b>Rerun empty windows with the respiratory and drift terms of (11) disabled</b>
+(<code>b(t) = d(t) = 0</code>). If the floor collapses, contact modulation is the source;
+if it survives, it is the gate and the finite window length.</li>
+<li><b>Log the realised per-zone weight</b> <code>w<sub>j</sub></code> and its Spearman
+rank correlation with <code>z</code>, per trial, on the empty windows that leak. The
+prediction is that leaking windows have |rank correlation| near 1 and rejected windows do
+not. This directly tests the smoothness argument and distinguishes it from a pure-chance
+gate leak.</li>
+<li><b>Replace <code>argmax(c)</code> with a sign-tracking <code>argmax(|c|)</code></b>
+in <code>xcorr_lag</code> and re-measure. This tests the anti-phase step specifically,
+and it is the same code change that would test the −1/(n−1) coupling
+identified in section 3.</li>
+<li><b>Add a per-electrode V5 to the verification suite</b> that perturbs one
+<code>z<sub>l</sub></code> at a time and reports the 4×18 sensitivity matrix
+<code>s<sub>jl</sub></code>. Without it, (14) has an unmeasured coefficient.</li>
+</ol>
+<p>Until those are run, the honest position is that an <b>11.1% [5.7%, 20.4%] intrinsic
+false-positive floor exists, is not explained by motion, is not amplitude-driven, shows
+no detectable sign bias at n = 21, and is not fully explained.</b></p>
+</div>
+
+<h4>10. What survives if the real front end is 20 dB worse</h4>
+
+<p>The measured evidence is thinner than it looks, and its design is worse than the
+earlier draft claimed. <code>run_directional.py</code> sweeps
+<code>SNRS = [50, 60, 70, 80]</code> at a single operating point (<code>N = 8</code>,
+12 cm span, 0.6 cm motion, <code>F = 1</code>, <code>N_SEC = 32</code> trials per cell)
+with seeds <code>300_000 + i</code> shared across SNR arms:</p>
+
+<table class="mm-t">
+<caption>Study 1 SNR sweep (matched seeds, n = 32 per cell)</caption>
+<tr><th>SNR (dB)</th><th>direction accuracy</th><th>accuracy on calls made</th>
+<th>calls made</th><th>abstain rate</th><th>AUC (direction-only)</th>
+<th>per-trial decision changes vs 50 dB</th></tr>
+<tr><td>50</td><td>0.781</td><td>0.926</td><td>27/32</td><td>0.156</td><td>0.805</td><td>—</td></tr>
+<tr><td>60</td><td>0.781</td><td>0.926</td><td>27/32</td><td>0.156</td><td>0.824</td><td><b>0</b></td></tr>
+<tr><td>70</td><td>0.781</td><td>0.926</td><td>27/32</td><td>0.156</td><td>0.844</td><td><b>0</b></td></tr>
+<tr><td>80</td><td>0.813</td><td>0.929</td><td>28/32</td><td>0.125</td><td>0.777</td><td>1</td></tr>
+</table>
+
+<p><b>Per-trial identity was verified for this revision, not assumed.</b> Reading
+<code>records_directional.json</code> and matching the 128 <code>mode = "snr"</code>
+records by trial index <code>i</code>, the decision field <code>dir</code> is identical
+for all 32 trials at 50, 60 and 70 dB; exactly one trial changes between 70 and 80 dB
+(an abstention becoming a correct call). Identical aggregate accuracy <i>and</i>
+identical call count would have been consistent with compensating flips, so the check
+was necessary; it passed.</p>
+
+<div class="mm-warn">
+<p><b>The matched seeds do not strengthen this result. They weaken it, and the earlier
+draft had the inference backwards.</b> <code>snr_db</code> affects nothing upstream of
+<code>directional_sim.py</code>:317. Every SNR arm therefore reaches
+<code>rng.normal(0, sigma_n, dZ.shape)</code> with an <i>identical</i> generator state,
+and numpy's <code>Generator.normal</code> produces standard normals and multiplies by
+<code>scale</code>. We confirmed this directly:
+<code>default_rng(7).normal(0, 1e-3, 5)</code> and
+<code>default_rng(7).normal(0, 3.16e-3, 5)</code> differ by the constant factor 3.16
+element for element. The four arms therefore share <b>one standard-normal realisation
+per trial</b>, differing only by a scalar.</p>
+<p>The sweep does not sample the noise ensemble at all — it amplitude-sweeps a
+single realisation per anatomy. The correct reading is: <b>"for one fixed noise pattern
+per anatomy, a 10× change in noise amplitude moved one of 32 decisions."</b> The
+earlier draft's claim that "no trial's decision was anywhere near the noise-driven
+boundary over a 20 dB range" is <b>retracted</b>: it does not follow, and the
+seed-sharing fully explains the flatness that was being read as robustness. This is a
+variance-underestimating design and it is the single cheapest thing in this report to
+fix — the noise generator must be re-seeded independently of the anatomy seed so
+that each arm draws a fresh ensemble, and the per-trial flip rate reported alongside the
+aggregate accuracy.</p>
+<p>Additionally: <b>40 dB was never simulated.</b> The sweep floor is 50 dB. n = 32 per
+cell gives a 95% Wilson interval on 0.781 of roughly <b>[0.61, 0.89]</b> — wide
+enough to exclude only catastrophic degradation, not a ten-point drop. And Studies 5
+(2304 trials) and 6 (2160 trials) were both run at a <b>single</b> SNR of 60 dB
+(<code>SNR = 60</code> in <code>run_precision.py</code>:28 and
+<code>run_motion2.py</code>:40), so the two most consequential findings in the project
+— the refutation of the gradient hypothesis and the overturning of the 16 cm
+locked design — have no noise-robustness evidence at all.</p>
+</div>
+
+<p>Claim by claim, this is what we can and cannot defend at 40 dB:</p>
+
+<table class="mm-t">
+<caption>Survival of each result under a 20 dB worse front end</caption>
+<tr><th>Result</th><th>Status at 40 dB</th><th>Basis</th></tr>
+
+<tr><td>V2 reciprocity (4.77×10<sup>−15</sup>), V3 slope convergence
+(6.80 → 0.11%), V4 contact rejection (4.34×)</td>
+<td><b>Unaffected</b></td>
+<td>Established. These are noiseless computations on the forward operator; V3
+explicitly uses <code>_noiseless_trial</code> so discretisation error is not swamped.
+SNR does not enter. Note this row does <i>not</i> assert decision invariance under mesh
+refinement — see the opening caveat.</td></tr>
+
+<tr><td>Direction accuracy at the Study 1 operating point</td>
+<td><b>Demonstrated down to 50 dB for one noise realisation per anatomy; unknown at 40
+dB and under-sampled everywhere</b></td>
+<td>Measured, but on a degenerate noise design (above). 10 dB of nominal headroom with
+zero per-trial decision changes, on 32 anatomies each seeing exactly one noise pattern.
+The extrapolation of one further decade is not supported.</td></tr>
+
+<tr><td>The safe failure mode (abstain rather than confidently invert)</td>
+<td><b>Argued for <i>motion</i>; specifically NOT argued for <code>1/f</code> noise,
+where the mechanism runs the other way</b></td>
+<td>Mechanistic, and only half of it holds. The gate keys on <code>lin</code>, the
+R<sup>2</sup> of the arrival-time fit. Under <i>white</i> noise <code>lin</code>
+degrades before the fitted sign does, and Study 6 shows exactly this under a different
+stressor: as motion grows 0 → 3 cm the abstain rate rises 0% → 30.6% while
+accuracy on calls made holds at 62–100% (all n = 72 cells, intervals
+±12–16 points). Under <b><code>1/f</code></b> noise section 1 argues the
+opposite: over a 20-sample window <code>1/f</code> is a trend, adjacent
+<code>G = 3</code> zones share three of four electrodes so their trends are correlated,
+the resulting lag sequence is smooth in <code>z</code>, and <code>lin</code> is
+<i>inflated</i> rather than degraded. Since real front-end noise in the demodulated
+baseband is <code>1/f</code>-dominated, the safe failure mode cannot be claimed for the
+noise axis on present evidence.</td></tr>
+
+<tr><td>The 10 cm UVJ strip beats the 16 cm strip on <b>never-detected</b>
+(0% vs 25–33%) and <b>low-grade-never</b> (0% vs 43% at perfect placement)</td>
+<td><b>Expected to survive — argued, not measured. Applies to the sensitivity
+columns only.</b></td>
+<td>The 16 cm deficit on those two columns is a <b>coverage</b> failure: the strip is
+not over the ureterovesical junction, so for those children the signal is absent from
+the sensed span rather than buried in noise. Absent signal does not become present at
+higher SNR. This is a physical argument and should hold. It does <b>not</b> extend to
+the <i>specificity</i> columns of Study 5 (10 cm: 83/75/79/75; 16 cm: 83/88/79/67),
+which section 9 predicts should <i>degrade</i> at lower SNR because gate leakage on
+empty windows rises. The earlier draft applied the coverage argument to the whole
+comparison; it covers half of it.</td></tr>
+
+<tr><td>The refutation of the craniocaudal-gradient hypothesis (no penalty at grad = 0,
+0.5, 1.0)</td>
+<td><b>Unknown</b></td>
+<td>Single-SNR. A gradient artefact is a coherent, structured disturbance; white noise is
+incoherent. There is no obvious reason the refutation should be SNR-fragile, and no
+evidence that it is not. Under <code>1/f</code> noise, which is coherent, the question
+is genuinely open.</td></tr>
+
+<tr><td>The 11.1% [5.7%, 20.4%] zero-motion false-retrograde floor</td>
+<td><b>Expected to get worse</b></td>
+<td>The measured <code>P(pass gate)</code> on empty windows is 0.2917 with mean
+<code>lin</code> = 0.294 against a threshold of 0.35 — the distribution is sitting
+right against the gate. More noise means more chance realisations with a spuriously
+linear arrival-time ramp, so <code>P(pass gate)</code> should rise and the floor with
+it. This is the one place where lower SNR should degrade <i>specificity</i> rather than
+merely raise abstention, and it is the case that most deserves measuring.</td></tr>
+</table>
+
+<div class="mm-warn">
+<p><b>One statistical correction to how this report has described Study 5.</b> The
+16 cm arm's sensitivity is non-monotonic in placement error σ (75%, 67%, 88%, 83%
+at σ = 0, 0.5, 1.0, 2.0 cm), and this report has called that "not physically
+sensible". At n = 48 children per cell the 95% Wilson intervals are [62%, 86%],
+[53%, 79%], [77%, 95%] and [72%, 93%] — <b>mutually overlapping, every pair</b>.
+Non-monotonicity there is the expected appearance of sampling noise, not evidence of
+anything, and describing it as physically implausible misreads a sampling artefact as a
+physical one. What the Study 5 data <i>does</i> support is the never-detected and
+low-grade-never gap, which is large, consistent across all four σ levels, and
+structural rather than statistical.</p>
+</div>
+
+<h4>11. The cheapest experiments that would retire this assumption</h4>
+
+<ol>
+<li><b>Re-seed the noise independently of the anatomy, then extend and widen the SNR
+sweep.</b> The current sweep amplitude-scales one realisation per anatomy and therefore
+underestimates decision variance. Draw the noise from a separate generator, add 30, 35,
+40 and 45 dB, use n ≥ 300 per cell rather than 32, and report the <b>per-trial flip
+rate</b> alongside aggregate accuracy. Then repeat it inside Studies 5 and 6 rather than
+only Study 1. Pure compute; no new physics, hardware or modelling. This converts the
+largest unvalidated input in the project from an assertion into a characterised
+operating range, and it is the single highest-value item on this list.</li>
+
+<li><b>Report signal, not just noise.</b> The model never records the per-zone peak
+bolus-induced fractional excursion <code>max<sub>t</sub>|Re dZ[t, j]|</code>. Without it,
+"SNR = 60 dB" is a statement about the denominator with the numerator unstated, and the
+true measurement signal-to-noise ratio is unknown. Logging it costs nothing and is the
+single most informative number missing from this report. Section 9's estimate that
+contact modulation alone reaches 3.5× the noise floor is only interpretable against
+it.</li>
+
+<li><b>Add a coloured-noise arm.</b> Inject <code>1/f</code> alongside the white term and
+re-measure the abstain rate and <code>lin</code> distribution on empty and travelling
+windows. Section 1 argues that <code>1/f</code> inflates <code>lin</code> rather than
+degrading it, which would invert the design's safe failure mode. That argument is the
+most consequential unmeasured claim in this section. The same run should test the
+<code>argmax(|c|)</code> change to <code>xcorr_lag</code>, since the two interact.</li>
+
+<li><b>Log the three ratios the estimator's error analysis needs and does not have:</b>
+<code>Im(dZ)/Re(dZ)</code> per zone (sets the demodulator phase-error sensitivity, §8);
+the coherence of <code>Re(dZ)</code> between 50 and 100 kHz (sets whether the
+<code>√F</code> gain in (7) is 3 dB or 0 dB); and the realised per-zone contact
+weight <code>w<sub>j</sub></code> with its rank correlation against <code>z</code>
+(tests §9's mechanism). All three are one-line additions to <code>simulate_trial</code>
+or <code>direction_features</code>.</li>
+
+<li><b>Add V5, a per-electrode contact sensitivity check.</b> Perturb one
+<code>z<sub>l</sub></code> at a time and report the full sensitivity matrix
+<code>s<sub>jl</sub></code>. V4 measures only the <i>common-mode</i> response to a
+uniform <code>z0</code>, over 8 of 18 zones, on one strip; the disturbance the model
+injects is per-electrode and the mechanism in §9 depends on the differential response.
+This is the missing verification.</li>
+
+<li><b>Rerun the mesh refinement over an ensemble.</b> V3's decision stability rests on
+one trial with <code>lin</code> ≥ 0.98. Running the five-level sequence over, say, 32
+trials spanning the <code>lin</code> distribution would convert "the slope converges" into
+the decision-level claim this report has twice tried to make and cannot currently
+support.</li>
+
+<li><b>Measure a phantom.</b> A saline-filled phantom with the intended electrode array,
+driven by the intended front end, gives simultaneously: a real absolute <code>|Z|</code>
+per aperture (which V3 says the model cannot supply), a real noise spectrum including
+<code>1/f</code>, a real specific contact impedance at 50–100 kHz, a real source
+impedance, and a real CMRR figure. That single bench experiment would retire (8), (9),
+the <code>σ<sub>n</sub></code> assumption, the <code>z0</code> unit audit of §4 and
+most of the "not modelled" table at once. No amount of further simulation substitutes for
+it.</li>
+
+<li><b>Specify the four hardware parameters the design silently depends on:</b> (i) the
+differential <b>input impedance</b> of the sense path at 100 kHz, which sets whether the
+measured 4.34× contact rejection is achievable or optimistic; (ii) the amplifier
+<b>input current noise</b> at 50–100 kHz, which is the dominant term once the source
+impedance is kilohms and which §4's audit says it is; (iii) whether zones share <b>one
+demodulator</b> or have their own, which sets whether phase drift is common mode and
+removable; and (iv) the <b>acquisition order and dwell schedule</b>, which sets the
+multiplexer skew of §2 and the settling budget of §8.</li>
+
+<li><b>Decide what the frame rate is.</b> Fix the dead <code>breath_hz</code> parameter so
+respiration is configurable, state <code>Δt</code> explicitly rather than leaving it
+to be inferred from a hardcoded constant, and re-run Study 6 at a pediatric respiratory
+rate of 0.33–0.50 Hz. At present the project cannot say whether it is simulating a
+4 Hz device breathing at 18/min or a 6.7 Hz device breathing at 30/min, and the two imply
+different dwell budgets and different numbers of respiratory cycles inside the observation
+window.</li>
+</ol>
+
+<p>Until at least the first three are done, the correct summary of this section is short:
+<b>the noise model is internally consistent, unit-correct once (8) is applied, and
+entirely assumed.</b> Its numerical value is comfortably achievable by real electronics
+— roughly 40 dB of electronic-noise margin at the binding zone, on corrected
+arithmetic. Its <i>character</i> — white, stationary, bandwidth-free, half of it
+exactly cancellable, sampled with one realisation per anatomy — is the optimistic
+case in every dimension that matters, and the disturbances most likely to defeat a
+direction-from-timing estimator (cardiac pulsatility, <code>1/f</code> drift, cable
+artefact, per-channel phase drift) are precisely the ones it does not contain.</p>

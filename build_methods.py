@@ -483,12 +483,18 @@ answers a different question entirely: whether permittivity may be
 
 <h4>V2 &mdash; Reciprocity</h4>
 <p>Maxwell reciprocity requires the transfer impedance to be unchanged when the
-drive pair and the sense pair are exchanged. This is a strong, assumption-free
-test of the discretised operator: the drive enters through the electrode current
-constraint and the sense through a potential difference, so the two solves
-exercise different rows of the system, and any asymmetry in the assembly, the
-Robin contact term or the gauge shows up immediately. Measured over
-{v2['n_pairs']} tetrapolar zones.</p>
+drive pair and the sense pair are exchanged. Exchanging them exercises different
+rows of the assembled system, so an asymmetry in the assembly, the Robin contact
+term or the gauge shows up immediately. Measured over {v2['n_pairs']} tetrapolar
+zones.</p>
+<div class="mm-warn">This is <b>necessary but not sufficient</b>, and an earlier
+draft of these methods overstated it. The CEM system matrix is complex symmetric
+by construction, so reciprocity is an algebraic identity for an exact solve and
+the measured residual is essentially that of the sparse LU. It catches
+implementation errors &mdash; a transposed coupling block, a non-symmetric
+quadrature, an inconsistent contact-impedance term, a broken gauge &mdash; but any
+error entering <i>symmetrically</i>, such as a wrong electrode area or a wrong
+tissue value, passes it untouched.</div>
 
 <h4>V3 &mdash; Mesh convergence</h4>
 <p>The product depends on the <b>sign of a slope</b>, so the quantity that must be
