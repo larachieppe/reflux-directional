@@ -32,9 +32,22 @@ MOTION = 0.30
 K_EVENTS = 6
 N_CHILD = 48          # per (config, sigma)
 SIGMAS = (0.0, 0.5, 1.0, 2.0)      # cm, std dev of placement error
+# Fixed screening rule, chosen BEFORE seeing the results, so the two arms are
+# compared on the same rule. best_k is still reported, but it is selected by
+# max Youden on the very children it is scored on and is therefore optimistic.
+PRESPEC_K = 2
 # the low-grade optimum, and a longer strip that trades peak accuracy for margin
 CONFIGS = [(10.0, 0.34, "short, over the UVJ"),
            (16.0, 0.50, "long, mid-torso")]
+
+# Largest axial offset EVERY config can physically accommodate. Clipping both
+# arms to this makes the placement-error distribution identical across arms;
+# previously each arm was limited only by its own span, which protected the long
+# strip from exactly the large misplacements the study was meant to compare.
+MAX_OFF = min(
+    min(zc0 - (span / (2 * HEIGHT) + 0.005),
+        (1.0 - span / (2 * HEIGHT) - 0.005) - zc0) * HEIGHT
+    for span, zc0, _ in CONFIGS)
 
 _W = {}
 # ONE world per worker. With sigma > 0 every child has its own z_center, so a
@@ -66,10 +79,25 @@ def _run_one(args):
     # ONE placement error per child, shared by all their events: a strip is
     # applied once, not re-applied per void. This is what makes failure
     # correlated within a child, which is the whole question.
+    # DEFECT 25, FIXED. The drawn offset used to be clipped only by whether the
+    # strip stayed on the body, and that limit DEPENDS ON SPAN: a 16 cm strip in
+    # a 20 cm torso can only move +/-1.9 cm, while a 10 cm strip at z=0.34 can
+    # move -1.7/+8.1 cm. So the two arms were never exposed to the same error
+    # distribution -- which is the exact comparison this study exists to make. At
+    # sigma = 2.0 the long arm was being quietly protected from the large
+    # misplacements the short arm had to absorb.
+    #
+    # Both arms are now clipped to MAX_OFF, the largest offset every config in
+    # CONFIGS can physically accommodate, so the error distribution is identical
+    # across arms by construction.
     off = float(np.random.default_rng(880_000 + child).normal(0.0, sigma)) if sigma > 0 else 0.0
-    off = float(np.clip(off, -3.0, 3.0))
+    off = float(np.clip(off, -MAX_OFF, MAX_OFF))
     zc = zc0 + off / HEIGHT
     zc = float(np.clip(zc, span / (2 * HEIGHT) + 0.005, 1.0 - span / (2 * HEIGHT) - 0.005))
+    # the REALIZED offset after every clip, which is what was actually applied.
+    # mean_abs_off previously reported the pre-clip nominal draw and so was wrong
+    # in most cells, and it was the only placement diagnostic saved.
+    off_realized = (zc - zc0) * HEIGHT
     label = "reflux" if refluxer else "antegrade"
     side = +1 if (child // 2) % 2 == 0 else -1
     anat = ds.draw_anatomy(_world(span, zc), np.random.default_rng(890_000 + child))
@@ -77,10 +105,16 @@ def _run_one(args):
     dZ = ds.simulate_trial(w, label, np.random.default_rng(900_000 + child * 10 + k),
                            grade=grade, side=side, T=T, snr_db=SNR,
                            motion_amp=MOTION, anat=anat)
-    d, s, ev = ds.decide_direction(ds.direction_features(dZ, w))
+    feat = ds.direction_features(dZ, w)
+    d, s, ev = ds.decide_direction(feat)
+    # `lin` is what the abstain gate thresholds. It was not saved, so LIN_GATE
+    # could not be swept without re-running the whole study -- and the gate is a
+    # single hand-set constant that dominates the error budget. Saving it makes
+    # the operating point a post-hoc sweep instead of another hour of compute.
     return dict(span=span, zc0=zc0, sigma=sigma, child=child, k=k, grade=grade,
-                label=label, off=off, dir=int(d),
+                label=label, off=off_realized, off_nominal=off, dir=int(d),
                 want=(+1 if refluxer else -1),
+                lin=float(feat[s].get("lin", 0.0)), ev=float(ev),
                 lat_ok=bool((s == 0) == (side > 0)))
 
 
@@ -91,7 +125,14 @@ def main():
         for sig in SIGMAS:
             for c in range(N_CHILD):
                 refluxer = (c % 2 == 0)
-                grade = int(np.random.default_rng(870_000 + c).choice([1, 2, 3, 4, 5]))
+                # DEFECT 23, FIXED. This drew grades UNIFORMLY, giving 40% grades
+                # IV-V, while the project publishes GRADE_WEIGHTS
+                # (30/30/22/13/5, so 18% IV-V) as its prevalence model and never
+                # called sample_grade() anywhere in the repo. High grades are far
+                # easier to detect, so over-representing them by more than 2x
+                # biased every reported sensitivity UPWARD. Now uses the declared
+                # model, so the cohort matches the prevalence the report claims.
+                grade = ds.sample_grade(np.random.default_rng(870_000 + c))
                 for k in range(K_EVENTS):
                     jobs.append((span, zc0, sig, c, k, grade, refluxer))
     total = len(jobs)
@@ -139,7 +180,13 @@ def main():
             ps = []
             for c, evs in sorted(per_child.items()):
                 hits = sum(1 for e in evs if e["dir"] == e["want"])
-                ps.append(dict(label=evs[0]["label"], n_hit=hits,
+                # Events actually CALLED retrograde. On a healthy child these are
+                # the true false positives; inferring them as (K - n_hit) counted
+                # every abstention as a false alarm (defect 26).
+                n_retro = sum(1 for e in evs if e["dir"] > 0)
+                n_abstain = sum(1 for e in evs if e["dir"] == 0)
+                ps.append(dict(label=evs[0]["label"], n_hit=hits, n_retro=n_retro,
+                               n_abstain=n_abstain,
                                grade=evs[0]["grade"], off=evs[0]["off"]))
             sa = asub.subject_analysis(ps, K_EVENTS)
             refl = [p for p in ps if p["label"] == "reflux"]
@@ -148,6 +195,16 @@ def main():
                 span=span, z_center=zc0, sigma=sig, name=name,
                 sens_k=sa["sens_k"], spec_k=sa["spec_k"], best_k=sa["best_k"],
                 best_sens=sa["best_sens"], best_spec=sa["best_spec"],
+                # best_k is chosen by max Youden ON THESE SAME CHILDREN, so
+                # best_sens/best_spec are optimistically biased and are not an
+                # out-of-sample estimate. A PRE-SPECIFIED k is reported beside
+                # them so the comparison between arms uses a fixed rule.
+                prespec_k=PRESPEC_K,
+                prespec_sens=sa["sens_k"][str(PRESPEC_K)],
+                prespec_spec=sa["spec_k"][str(PRESPEC_K)],
+                best_k_selected_in_sample=True,
+                fp_counts_abstentions=sa.get("fp_counts_abstentions"),
+                mean_abstain=float(np.mean([p["n_abstain"] for p in ps])) / K_EVENTS,
                 never_detected=sa["never_detected_reflux"],
                 per_event_sens=sa["per_event_sens"],
                 low_grade_never=(float(np.mean([p["n_hit"] == 0 for p in lowg]))
@@ -155,9 +212,14 @@ def main():
                 mean_abs_off=float(np.mean([abs(p["off"]) for p in ps])),
             )
     out["grid"] = grid
+    out["grade_hist"] = {str(g): sum(1 for r in recs if r["grade"] == g)
+                         for g in (1, 2, 3, 4, 5)}
     out["runtime_min"] = (time.time() - t0) / 60.0
     with open("metrics_precision.json", "w") as f:
         json.dump(out, f, indent=1)
+    # per-trial records, so the abstain gate can be swept post hoc
+    with open("records_precision.json", "w") as f:
+        json.dump(recs, f)
     if os.path.exists(CKPT):
         os.remove(CKPT)          # only on a complete, written run
     print(f"[prec] done in {out['runtime_min']:.1f} min -> metrics_precision.json",

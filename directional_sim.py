@@ -115,6 +115,31 @@ class StripWorld:
         self.z_bladder = 0.20 * height
         self.z_kidney = 0.80 * height
 
+    # ---------------- motion gradient ----------------
+    def _grad_weight(self, grad):
+        """Per-cell multiplier on the displacement, for a craniocaudal gradient.
+
+        DEFECT 19, FIXED HERE. This was `w = (1 - grad) + grad * z/H`. Since z/H
+        runs 0..1 over the domain, that weight has MEAN 0.5 at grad=1 and 0.75 at
+        grad=0.5 -- so the "gradient" arms of Study 6 were not applying the same
+        displacement in a height-dependent way, they were applying HALF THE
+        DISPLACEMENT. The comparison against the rigid arm was therefore
+        confounded: the gradient arms were handed strictly less total motion, and
+        Study 6's own result is that motion AMPLITUDE is what degrades accuracy.
+        That is very likely why the gradient arms scored slightly BETTER and why
+        the "gradient hypothesis is refuted" conclusion looked so clean.
+
+        The fix centres the weight on its own mean, so `grad` changes only the
+        SHAPE of the displacement field and never its average magnitude. The
+        kidney-minus-bladder differential is unchanged (+0.30 at grad=0.5, +0.60
+        at grad=1.0); only the confound is removed. grad=0 still gives w == 1
+        exactly, so no other study's numbers move.
+        """
+        if grad == 0.0:
+            return 1.0
+        zf = self.cent[:, 2] / max(self.H, 1e-9)
+        return 1.0 + grad * (zf - zf.mean())
+
     # ---------------- conductivity map ----------------
     def base_sigma(self, f, anat, shift=(0.0, 0.0, 0.0), grad=0.0):
         """grad in [0,1] makes the displacement DEPEND ON HEIGHT rather than
@@ -124,8 +149,7 @@ class StripWorld:
         Real respiratory motion is a craniocaudal gradient: the kidney travels
         1-3 cm while the bladder is nearly fixed. A displacement linear in z
         survives mean subtraction and enters the arrival-time slope directly."""
-        zf = self.cent[:, 2] / max(self.H, 1e-9)
-        w = (1.0 - grad) + grad * zf          # 1 everywhere if grad=0
+        w = self._grad_weight(grad)
         x = self.cent[:, 0] - shift[0] * w
         y = self.cent[:, 1] - shift[1] * w
         z = self.cent[:, 2] - shift[2] * w
@@ -156,8 +180,7 @@ class StripWorld:
 
     def add_bolus(self, sig, f, center, radii, shift=(0.0, 0.0, 0.0), frac=1.0,
                   grad=0.0):
-        zf = self.cent[:, 2] / max(self.H, 1e-9)
-        w = (1.0 - grad) + grad * zf
+        w = self._grad_weight(grad)
         x = self.cent[:, 0] - shift[0] * w
         y = self.cent[:, 1] - shift[1] * w
         z = self.cent[:, 2] - shift[2] * w

@@ -299,7 +299,14 @@ def main():
     slim = [{k: r[k] for k in ("mode", "motion", "i", "label", "grade", "side",
                                "subj", "dir", "want", "strip", "ev", "lat_ok",
                                "lin", "m_ap")} for r in recs]
-    with open("records_design.json", "w") as f:
+    # DEFECT 24. The metrics path is environment-configurable but this one was
+    # hard-coded, so every alternative-placement run silently overwrote the
+    # PUBLISHED 16 cm run's record-level data. Derive it from OUT so the records
+    # always travel with the metrics they describe.
+    rec_path = OUT.replace("metrics_", "records_")
+    if rec_path == OUT:
+        rec_path = "records_" + OUT
+    with open(rec_path, "w") as f:
         json.dump(slim, f)
     print(f"[design] done in {out['runtime_min']:.1f} min -> {OUT}",
           flush=True)

@@ -16,4 +16,39 @@ most robust.
 
 {{fig:figs_dir/figA_count.png|Direction accuracy against electrode count with Wilson 95% intervals.}}
 
+### 4.1 The AUC column was measuring the wrong thing
+
+> [!WARN]
+> **Claim overturned #6.** Every AUC this report has published came from `_fit_auc`, which trains an elastic-net logistic regression over the **entire feature vector** with 5-fold cross-validation. It describes a learned classifier, not the sign-of-slope rule the whole design is premised on. So "the design achieves AUC 0.96" was never a statement about the direction method.
+
+The proof is N = 4. That configuration has one zone per strip, cannot fit a slope, and **abstains
+on 100% of trials with `dir_acc` undefined** &mdash; yet it posted AUC 0.852. That figure is
+identical to three decimals to its own energy-only ablation at *every* motion level (0.852, 0.720,
+0.449, 0.260). At N = 4 the classifier is running purely on amplitude.
+
+That is precisely the failure mode this project exists to avoid. Scoring the *presence* of
+conductive fluid rather than its *direction* is what leaves a device unable to separate reflux from
+ordinary bladder filling, and it is the mechanism behind the prior program's collapse from 73% to
+44% under motion.
+
+The last column below is the honest metric: the ranking performance of the direction decision
+itself, scored as signed evidence with **no model fitted at all**. It puts N = 4 at exactly 0.500.
+
+{{table:auc_corrected}}
+
+> [!NOTE]
+> **And none of the AUC differences were ever significant.** Each cell rests on 64 four-class
+> trials, roughly 16 reflux against 48 rest. By Hanley-McNeil that is a 95% interval of &plusmn;0.10
+> to &plusmn;0.16, shown above and never previously reported. The entire spread across electrode
+> counts, 0.852 to 0.979, **fits inside a single cell's confidence interval**. No electrode count
+> was ever distinguishable from another on AUC.
+>
+> The same small-sample weakness explains N = 4 at motion 0.9 reading **0.260** &mdash;
+> significantly *below* chance even at this precision. An out-of-fold AUC that low is not
+> uninformative noise, it is a model that inverts out of sample.
+
+Read on the direction rule instead, the ordering is what the rest of the study already said:
+N &ge; 8 sits near 0.90 when still and degrades gracefully, N = 4 is chance by construction, and
+N = 5 scores well only because it can never abstain.
+
 {{methods:electrode-count}}

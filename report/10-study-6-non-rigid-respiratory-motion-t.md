@@ -1,4 +1,30 @@
-## 10. Study 6: non-rigid respiratory motion &mdash; the predicted failure did not happen
+## 10. Study 6: non-rigid respiratory motion &mdash; result withdrawn, re-running
+
+> [!WARN]
+> **This study's headline is withdrawn.** It previously concluded that the gradient hypothesis was
+> refuted. An audit of the results found the comparison was confounded, so the conclusion is not
+> established either way. The design and the method below stand; the numbers do not. A corrected
+> run is in progress.
+>
+> The displacement weight was `w = (1 - grad) + grad*(z/H)`. Because `z/H` runs from 0 to 1 across
+> the torso, that weight has **mean 0.50 at grad = 1.0** and 0.75 at grad = 0.5. The "gradient"
+> arms were therefore not applying the same displacement redistributed with height &mdash; they
+> were applying **half, and three-quarters, of the total motion** of the rigid arm.
+>
+> That wrecks the comparison, because this study's own second result is that motion **amplitude**
+> is what degrades accuracy. The gradient arms were handed a strictly easier problem, which is the
+> most likely reason they scored slightly *better* (79.4% against 71.9%) and why the refutation
+> looked so clean.
+>
+> The fix centres the weight on its own mean, `w = 1 + grad*(z/H &minus; mean(z/H))`, so `grad`
+> changes only the *shape* of the displacement field and never its average magnitude. The
+> kidney-minus-bladder differential is unchanged (+0.30 at grad = 0.5, +0.60 at grad = 1.0) and
+> `grad = 0` still gives `w = 1` exactly, so no other study's numbers move. Before concluding this
+> was a confound rather than a dead parameter, `grad` was confirmed to reach the measurement: at
+> 2 cm displacement it changes the sensed transfer impedance by up to 1.5%.
+>
+> The figures below are the **confounded** run, kept so the correction is auditable. Read them as a
+> record of what was measured, not as evidence about gradients.
 
 Every motion result before this one used a **rigid** translation, which is exactly the
 perturbation that subtracting the across-zone mean provably nulls. A rigid-only model can only ever

@@ -231,6 +231,29 @@ def _rows_m2fr():
         for a in M2["config"]["amps"])
 
 
+def _rows_auc():
+    """Published classifier AUC beside the honest direction-rule AUC."""
+    A = _load("metrics_auc_corrected.json")
+    if not A:
+        return ""
+    out = ""
+    for n in ECOUNTS:
+        for m in EC["motion"]:
+            v = A.get(f"{n}_{m}")
+            if not v:
+                continue
+            cls = " class=bad" if n == 4 else (" class=hi" if n == 8 else "")
+            ci = v["classifier_ci"]; rci = v["rule_ci"]
+            out += (f"<tr{cls}><td>N = {n}</td><td>{m}</td>"
+                    f"<td>{v['classifier']:.3f}<br>"
+                    f"<span class='sub'>[{ci[0]:.2f}, {ci[1]:.2f}]</span></td>"
+                    f"<td>{v['energy_only']:.3f}</td>"
+                    f"<td>{v['direction_only']:.3f}</td>"
+                    f"<td><b>{v['rule']:.3f}</b><br>"
+                    f"<span class='sub'>[{rci[0]:.2f}, {rci[1]:.2f}]</span></td></tr>")
+    return out
+
+
 def _rows_altdesign():
     """Locked design characterised at each placement that has been run."""
     names = {"metrics_design.json": ("16 cm @ z=0.50", "published"),
@@ -272,6 +295,14 @@ DEFECTS = [
  ("Placement chosen on the still arm only", "stats", "run_placement scored candidate placements by low-grade accuracy at motion 0.0, discarding the motion arm the same study had just measured.", "Selected 10 cm @ z=0.34 (92.9%/100% still, but 50.0% on grade I under motion) over 10 cm @ z=0.28 (equal still, 78.6% under motion). Propagated into Study 4, which centred its offsets on it, and Study 5, which adopted it as the short-strip arm."),
  ("Reciprocity described as assumption-free", "reporting", "The CEM system matrix is complex symmetric by construction, so reciprocity is an algebraic identity for an exact solve rather than an independent check of the physics.", "Overstated what the verification proved. Any error entering symmetrically -- wrong electrode area, wrong tissue value, mis-meshed geometry -- passes the test untouched."),
  ("Contact impedance said to 'largely drop out'", "reporting", "Measured tetrapolar rejection over the modelled z0 range is 4.3x, a 16% residual.", "Overstated tetrapolar immunity. The four-wire geometry is still right, but the residual has to be budgeted for in hardware."),
+ ("Motion gradient confounded with motion amplitude", "model", "The displacement weight was w = (1-grad) + grad*(z/H). Since z/H spans 0..1, that weight has MEAN 0.50 at grad=1 and 0.75 at grad=0.5, so the gradient arms applied HALF and THREE-QUARTERS of the rigid arm's displacement rather than the same displacement redistributed.", "Invalidates Study 6's headline. The gradient arms were handed strictly less total motion, and Study 6's own finding is that AMPLITUDE is what degrades accuracy -- which is very likely why they scored slightly BETTER and why 'the gradient hypothesis is refuted' looked so clean. Fixed with a mean-preserving weight; re-running."),
+ ("AUC measured a trained classifier, not the direction rule", "stats", "_fit_auc fits an elastic-net logistic regression over the WHOLE feature vector with 5-fold CV. N=4 abstains on 100% of trials with dir_acc = NaN yet reports AUC 0.852 -- identical to three decimals to its energy-only ablation at every motion level (0.852/0.720/0.449/0.260).", "Every 'the design achieves AUC x' statement described a learned classifier running largely on amplitude, reproducing the exact failure mode the project claims to avoid. The honest direction-rule AUC, scored as signed evidence with no model fitted, puts N=4 at 0.500 -- chance."),
+ ("AUC published without confidence intervals", "stats", "Each AUC cell rests on N_AUC = 64 four-class trials, about 16 reflux against 48 rest. Hanley-McNeil gives a 95% interval of +/-0.10 to +/-0.16.", "The entire spread across electrode counts (0.852 to 0.979) fits inside a single cell's interval, so no between-count AUC comparison in Study 1 was ever meaningful. N=4 at motion 0.9 reads AUC 0.260, significantly BELOW chance even at this precision -- an out-of-fold model that inverts, i.e. small-n overfitting."),
+ ("Alternative-placement runs overwrote the published records", "tooling", "run_design.py took its metrics path from the environment but wrote records_design.json to a hard-coded name, so each re-cut placement silently replaced the published 16 cm run's record-level data.", "The published run's per-trial records were destroyed and had to be recovered from git. Record paths now derive from the metrics path."),
+ ("Placement error clipped asymmetrically between arms", "stats", "The drawn offset was limited only by keeping the strip on the body, and that limit depends on span: a 16 cm strip in a 20 cm torso can move only +/-1.9 cm, while a 10 cm strip at z=0.34 can move -1.7/+8.1 cm.", "Invalidates Study 5's central comparison. The two arms were never exposed to the same placement-error distribution, and at sigma = 2.0 the long strip was quietly protected from the large misplacements the short strip had to absorb. Both arms now clip to the same limit, and the REALIZED offset is recorded rather than the pre-clip draw."),
+ ("Abstentions counted as false positives", "stats", "subject_analysis inferred false alarms on healthy children as (K - n_hit), i.e. every event not correctly called antegrade -- a set that includes every ABSTENTION -- while its own docstring said 'events wrongly read as retrograde'.", "Understated specificity everywhere it was used, by up to the abstention rate, which reaches 50% under motion. A device that declines to answer has not raised a false alarm. Callers now pass the retrograde-call count explicitly, and any run that cannot is flagged in its own output."),
+ ("k-of-n threshold selected on the evaluation data", "stats", "best_k is chosen by maximum Youden index on the same children it is then scored on, with no held-out set and no interval.", "best_sens and best_spec are optimistically biased and are not out-of-sample estimates. A pre-specified k is now reported beside them so the two placements are compared on a fixed rule."),
+ ("Grade prevalence drawn uniformly", "stats", "run_precision drew grades with .choice([1,2,3,4,5]), giving 40% grades IV-V, while the project publishes GRADE_WEIGHTS (30/30/22/13/5, so 18% IV-V) as its prevalence model. sample_grade() existed but was never called anywhere in the repo.", "High grades are far easier to detect, so over-representing them by more than twice biased every sensitivity Study 5 reported UPWARD. Now draws from the declared model; re-running."),
 ]
 
 
@@ -282,7 +313,8 @@ TABLES = {
         _rows_count()),
     "design_motion": lambda: _t(
         "<tr><th>Motion</th><th>Direction (old &rarr; new)</th><th>Laterality</th>"
-        "<th>AUC</th><th>Abstain</th></tr>", _rows_design()),
+        "<th>AUC<br><span class='sub'>classifier, see &sect;4.1</span></th>"
+        "<th>Abstain</th></tr>", _rows_design()),
     "multievent": lambda: _t(
         "<tr><th>Rule</th><th>Sensitivity</th><th>Specificity</th>"
         "<th>Chance floor</th></tr>", _rows_k()),
@@ -314,6 +346,12 @@ TABLES = {
         "<th colspan='3'>half gradient</th><th colspan='3'>full gradient</th></tr>"
         "<tr><th>raw</th><th>on calls</th><th>abstain</th><th>raw</th><th>on calls</th>"
         "<th>abstain</th><th>raw</th><th>on calls</th><th>abstain</th></tr>", _rows_m2()),
+    "auc_corrected": lambda: _t(
+        "<tr><th>Config</th><th>Motion</th>"
+        "<th>Published<br>classifier AUC</th><th>energy<br>features only</th>"
+        "<th>direction<br>features only</th>"
+        "<th>Direction-rule AUC<br><span class='sub'>no model fitted</span></th></tr>",
+        _rows_auc()),
     "alt_designs": lambda: _t(
         "<tr><th>Placement</th><th>grade I<br><span class='sub'>still</span></th>"
         "<th>grade II<br><span class='sub'>still</span></th><th>AUC still</th>"
