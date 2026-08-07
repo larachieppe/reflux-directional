@@ -154,11 +154,25 @@ def main():
                 grid[key][f"g{g}_m{m}"] = summarize(sub)
     out["grid"] = grid
 
-    # best config judged on LOW grades (1-2), which is the open question
+    # Best config judged on LOW grades (1-2), which is the open question.
+    #
+    # DEFECT FIXED: this previously scored the STILL arm only, silently
+    # discarding the motion arm the study had just spent half its compute
+    # measuring. Motion is the dominant real-world stressor -- it is what took
+    # the prior tomographic program from 73% to 44% -- so a placement chosen on
+    # still data alone is chosen on the easy half of the problem. The rule
+    # selected 10 cm @ z=0.34, which is 92.9%/100% still but collapses to 50.0%
+    # on grade I under motion 0.30, over 10 cm @ z=0.28, which matches it still
+    # and holds 78.6% under the same motion. That single line propagated into
+    # Study 4 (which centred its offsets on it) and Study 5 (which adopted it as
+    # the short-strip arm).
     def low_score(key):
-        v = [grid[key].get(f"g{g}_m0.0", {}).get("reflux_acc", float("nan"))
-             for g in (1, 2)]
-        v = [x for x in v if x == x]
+        v = []
+        for m in MOTION:                       # every motion level, not just 0.0
+            for g in (1, 2):
+                x = grid[key].get(f"g{g}_m{m}", {}).get("reflux_acc", float("nan"))
+                if x == x:
+                    v.append(x)
         return sum(v) / len(v) if v else -1.0
 
     best_key = max(grid, key=low_score)

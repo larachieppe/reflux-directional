@@ -1442,10 +1442,17 @@
   }
  },
  "best_low_grade": {
-  "key": "10_0.34",
-  "score": 0.9642857142857143,
+  "key": "10_0.28",
+  "score": 0.875,
   "span": 10.0,
-  "z_center": 0.34
+  "z_center": 0.28,
+  "rule": "mean low-grade reflux accuracy across ALL motion levels",
+  "superseded": {
+   "key": "10_0.34",
+   "span": 10.0,
+   "z_center": 0.34,
+   "rule": "still arm only (defect)"
+  }
  },
  "runtime_min": 65.50549010038375
 }

@@ -1,0 +1,123 @@
+<h3>Physical basis and governing equations</h3>
+
+<p>Because the endpoint is the sign of a regression of per-zone arrival time on zone height, what the physics must get right is the propagation of a local admittivity perturbation to a <em>differential</em> surface measurement, and its timing. What it need not get right — and in this model demonstrably does not — is any absolute impedance level. This section derives the field model solved in <code>eit3d.CEM3D._assemble</code>, states the two conditions that license it, separates them from a third question they are routinely confused with, and quantifies the contrast the method rests on.</p>
+
+<h4>Reduction from Maxwell to a scalar elliptic problem</h4>
+
+<p>Assume an <code>e</code><sup><code>jωt</code></sup> time convention and a linear, isotropic, non-magnetic medium. The two curl equations are</p>
+
+<p><code>∇ × H = J<sub>c</sub> + ∂D/∂t</code>  (1)<br>
+<code>∇ × E = − ∂B/∂t</code>  (2)</p>
+
+<p>With <code>J<sub>c</sub> = σE</code> and <code>D = εE</code>, the right-hand side of (1) collapses into a single constitutive term:</p>
+
+<p><code>∇ × H = (σ + jωε) E = κ E</code>,   <code>κ ≡ σ + jωε</code>  (3)</p>
+
+<p>Taking the divergence of (3) and using <code>∇·(∇×H) ≡ 0</code> gives the exact statement of current continuity for the <em>total</em> (conduction plus displacement) current:</p>
+
+<p><code>∇ · (κ E) = 0</code>  (4)</p>
+
+<p>Equation (4) is not yet a scalar problem. The electro-quasi-static (EQS) step is to drop <code>∂B/∂t</code> in (2), which makes <code>E</code> irrotational and admits a single-valued scalar potential, <code>E = −∇u</code>. Substituting into (4):</p>
+
+<p><code>∇ · (κ ∇u) = 0</code>   in Ω  (5)</p>
+
+<p>This is the equation the code solves. Note what survives: <code>κ</code> is complex, so <code>u</code> is complex, and the imaginary part of the coefficient is not decorative — it changes the real part of the solution, quantified below.</p>
+
+<h4>Boundary conditions: the complete electrode model</h4>
+
+<p>Electrodes are finite patches with a resistive contact layer, not point potentials. On electrode <code>e<sub>l</sub></code> with contact impedance <code>z<sub>l</sub></code> and driven potential <code>U<sub>l</sub></code>:</p>
+
+<p><code>u + z<sub>l</sub> κ ∂u/∂n = U<sub>l</sub></code> on <code>e<sub>l</sub></code>  (6)<br>
+<code>∫<sub>e<sub>l</sub></sub> κ ∂u/∂n dS = I<sub>l</sub></code>  (7)<br>
+<code>κ ∂u/∂n = 0</code> on <code>∂Ω \ ∪e<sub>l</sub></code>  (8)</p>
+
+<p>with the compatibility and gauge conditions <code>Σ<sub>l</sub> I<sub>l</sub> = 0</code> and <code>Σ<sub>l</sub> U<sub>l</sub> = 0</code> (9). The weak form is</p>
+
+<p><code>∫<sub>Ω</sub> κ ∇u · ∇v + Σ<sub>l</sub> (1/z<sub>l</sub>) ∫<sub>e<sub>l</sub></sub> (u − U<sub>l</sub>)(v − V<sub>l</sub>) dS = Σ<sub>l</sub> I<sub>l</sub> V<sub>l</sub></code>  (10)</p>
+
+<p>and maps term-for-term onto <code>_assemble</code>: P1 stiffness <code>K</code> from <code>_stiff_real</code>, electrode mass matrices <code>self._M[l] / z<sub>l</sub></code> added into <code>K</code>, coupling block <code>B[:,l] = −c<sub>l</sub>/z<sub>l</sub></code> with <code>c<sub>l</sub> = ∫<sub>e<sub>l</sub></sub> φ<sub>i</sub> dS</code>, diagonal <code>C<sub>ll</sub> = area<sub>l</sub>/z<sub>l</sub></code>, and a bordering row of ones imposing (9) as a Lagrange multiplier rather than by pinning a node.</p>
+
+<p>Two properties matter downstream. The form is <em>linear in the coefficient</em>, which is why <code>_stiffness</code> may legally write <code>K(κ) = K(Re κ) + j·K(Im κ)</code> and assemble two real problems (a <code>skfem</code> casting workaround, not an approximation). And <code>z<sub>l</sub></code> enters (6) as a real boundary condition, not an idealisation: measured tetrapolar rejection over <code>z<sub>0</sub> ~ U(5,20) Ω·cm²</code> is only 4.3×, a 16% residual. Earlier wording that contact impedance “largely drops out” was an overclaim and is withdrawn.</p>
+
+<h4>The two EQS conditions — and the third question they are confused with</h4>
+
+<p>The reduction (2)→(5) discards two distinct couplings, and each has its own smallness parameter.</p>
+
+<ol>
+<li><strong>Retardation / radiation.</strong> Dropped when the domain is electrically small against the <em>free-space</em> wavelength, <code>L ≪ λ<sub>0</sub> = c/f</code>. With <code>L = 0.20 m</code> (cylinder height; <code>R = 5.5 cm</code>), <code>λ<sub>0</sub></code> is 5996 m at 50 kHz and 2998 m at 100 kHz, so <code>L/λ<sub>0</sub></code> = 3.34×10<sup>−5</sup> and 6.67×10<sup>−5</sup>: two orders of margin.</li>
+<li><strong>Magnetic diffusion / induction.</strong> Dropped when the skin depth <code>δ = √(2/ωμσ)</code> is large against <code>L</code>, the inductive term being <code>O((L/δ)²)</code>. Measured over both frequencies and all five tissues, <code>δ/L</code> runs 6.07 (urine, 100 kHz) to 54.3 (fat, 50 kHz); worst case <code>(L/δ)² = 0.027</code>, a ~3% correction. This is the binding condition, and why <code>verify_forward.v1_quasistatic</code> gates on <code>δ/L > 5</code> and <code>L/λ<sub>0</sub> < 0.01</code>.</li>
+</ol>
+
+<p>Neither condition involves <code>ωε/σ</code>. That ratio answers a <em>separate</em> question — may permittivity be dropped from <code>κ</code>, reducing (5) to a real Laplace-type problem — and its answer here is no. EQS validity and the adequacy of a resistive model are independent questions; the comments at <code>verify_forward.py:79–92</code> say so explicitly.</p>
+
+<table class="mm-t">
+<tr><th>Tissue</th><th>σ (S/m, 50 kHz)</th><th>ε<sub>r</sub> (50 kHz)</th><th>ωε/σ @50</th><th>δ/L @50</th><th>ωε/σ @100</th><th>δ/L @100</th><th>arg κ @100</th></tr>
+<tr><td>muscle</td><td>0.340</td><td>2.6×10<sup>4</sup></td><td>0.213</td><td>19.3</td><td>0.392</td><td>13.6</td><td>21.4°</td></tr>
+<tr><td>fat</td><td>0.043</td><td>1.5×10<sup>3</sup></td><td>0.097</td><td>54.3</td><td>0.179</td><td>38.2</td><td>10.1°</td></tr>
+<tr><td>kidney</td><td>0.110</td><td>3.0×10<sup>4</sup></td><td>0.759</td><td>33.9</td><td><strong>1.399</strong></td><td>23.9</td><td>54.4°</td></tr>
+<tr><td>bladder wall</td><td>0.300</td><td>4.0×10<sup>3</sup></td><td>0.037</td><td>20.5</td><td>0.068</td><td>14.4</td><td>3.9°</td></tr>
+<tr><td>urine</td><td>1.700</td><td>80</td><td>1.3×10<sup>−4</sup></td><td>8.63</td><td>2.4×10<sup>−4</sup></td><td>6.07</td><td>0.01°</td></tr>
+</table>
+
+<h4>Why testing L against the in-medium wavelength double-counts</h4>
+
+<p>A frequent third “check” is <code>L ≪ λ<sub>medium</sub></code>. It carries no independent information. The propagation constant in a lossy medium is <code>γ = √(jωμκ)</code>; in the good-conductor limit <code>ωε ≪ σ</code> this becomes <code>γ = √(jωμσ) = (1+j)/δ</code>, so the attenuation and phase constants are equal and</p>
+
+<p><code>λ<sub>medium</sub> = 2π/β = 2πδ</code>  (11)</p>
+
+<p>Hence <code>L/λ<sub>medium</sub> = (1/2π)(L/δ)</code>. Demanding <code>L/λ<sub>medium</sub> < 0.01</code> is <em>exactly</em> demanding <code>δ/L > 15.9</code> — one quantity rescaled by 2π and reported twice. The stored metrics show the identity: muscle at 50 kHz has <code>δ/L = 19.30</code> and <code>L/λ<sub>medium</sub> = 0.00825 = 1/(2π×19.30)</code>. The independent retardation criterion must be taken against <code>λ<sub>0</sub></code>, because the coupling EQS discards there rides on the vacuum displacement term, not on diffusion in tissue. Under the in-medium test, urine at 100 kHz (<code>L/λ<sub>medium</sub> = 0.026</code>) appears to fail a 0.01 threshold; that is the skin-depth margin restated, and at <code>δ/L = 6.07</code> it is a ~2.7% inductive correction.</p>
+
+<h4>What ωε/σ = 1.40 means physically</h4>
+
+<p>For kidney at 100 kHz the code's admittivity gives <code>σ = 0.111 S/m</code>, <code>ε<sub>r</sub> = 2.80×10<sup>4</sup></code>, and <code>ωε/σ = 1.40</code>: <strong>more current crosses perfused renal tissue as displacement current than as conduction current.</strong> Equivalently, the charge relaxation time <code>τ = ε/σ = 2.23 μs</code> is comparable to the 10 μs drive period, so charge deposited at an admittivity interface does not relax within a cycle: it persists with a lag of <code>arctan(ωτ) = 0.95 rad</code> (54.4°) and returns in the next half-cycle as capacitive current.</p>
+
+<p>Three consequences, all load-bearing:</p>
+
+<ul>
+<li><strong>κ must stay complex.</strong> For a locally homogeneous region <code>Z ∝ 1/κ</code>, so <code>Re Z ∝ σ/(σ² + (ωε)²) = (1/σ)·1/(1+r²)</code> with <code>r = ωε/σ</code>. At <code>r = 1.40</code> that factor is 0.338: a real-<code>σ</code> solve would overstate the kidney's contribution to the <em>real</em> part of every zone measurement roughly threefold. Muscle's factor is 0.867, fat's 0.969, urine's 1.000 — so the error is not a uniform scaling a differential estimator would cancel; it is strongly tissue-dependent and reshapes the sensitivity field.</li>
+<li><strong>The bolus rotates κ, it does not merely scale it.</strong> Replacing muscle with urine takes <code>κ</code> from <code>0.344 + j0.135</code> to <code>1.721 + j0.0004</code>: the real part rises 1.38 S/m while the imaginary part <em>falls</em> 0.135, and <code>arg κ</code> goes 21.4° → 0.01°, with <code>|Δκ|/|κ<sub>bg</sub>| = 3.74</code>. A resistive model gets both magnitude and phase of the perturbation wrong.</li>
+<li><strong>It is not an EQS violation.</strong> Nothing in (1)–(5) required <code>ωε ≪ σ</code>. <code>r = 1.40</code> says the medium is a poor conductor here, not that the field is non-quasi-static.</li>
+</ul>
+
+<div class="mm-warn">The <code>Re Z</code> suppression factors are exact only for a homogeneous medium; in the heterogeneous forward problem the map from <code>κ</code> to <code>Re Z</code> is not a per-region reciprocal, so 0.338 is an indicative scale, not a measured error bar. The direct test — re-run a fixed trial set with <code>admittivity()</code> stripped to its real part and compare per-zone <code>dZ</code> and the decided direction — is cheap and has <em>not</em> been run.</div>
+
+<h4>The urine contrast: the physical basis of the whole method</h4>
+
+<p>Everything the device can see comes from the contrast in <code>TISSUE</code>. Urine at <code>σ = 1.70 S/m</code> against muscle 0.34, kidney 0.11, fat 0.043 and bladder wall 0.30 gives <strong>5.0× over muscle, 15.5× over kidney, 39.5× over fat, 5.7× over bladder wall</strong> — far larger than the lesion contrasts EIT normally chases, and the reason a direction-only estimator is plausible where tomography was not.</p>
+
+<p>The perturbation is nonetheless small in <em>volume</em>. <code>GRADE_TABLE</code> sets the bolus semi-axis at 0.10<code>R</code> (grade 1) to 0.30<code>R</code> (grade 5), i.e. 0.55–1.65 cm. Against <code>πR²H = 1901 cm³</code>, a grade 3 bolus (semi-axis 1.05 cm) occupies roughly 0.25% of the segment if isotropic. The method lives on a <strong>0.25%-volume, 374%-admittivity</strong> perturbation whose <em>ordering in time</em> across zones is the entire signal — which is why the timing quantity converges under refinement (slope error 6.80 → 2.84 → 0.97 → 0.11% over 704 → 5675 nodes) while <code>|Z|</code> does not (11–76%, oscillating). The mechanism is visible in (10): <code>C<sub>ll</sub> = area<sub>l</sub>/z<sub>l</sub></code> ties the level of <code>Z</code> to the <em>realised</em> electrode area, and electrode facets snap to mesh facets, so area jumps discontinuously with refinement. A differential timing statistic is insensitive to a common area scaling; an absolute impedance is not. <strong>No absolute impedance claim in this report is supported by this model.</strong> Consistently, <code>StripWorld</code> regresses on <code>elec_z_realized</code> (facet centroids, realised pitch 2.50–3.14 cm against a nominal 2.80) rather than requested positions.</p>
+
+<div class="mm-warn">The conductivity model is <em>identical</em> for every “simulated child”. <code>draw_anatomy</code> perturbs organ <em>positions</em> only; torso radius, height, the fat shell (<code>sig[r > 0.82*R] = fat</code>, a fixed 0.99 cm rind), organ sizes and every tissue value including urine are constants. Urine conductivity varies with hydration over roughly a factor of two in real children, and subcutaneous fat thickness is the single strongest determinant of surface-array sensitivity. Nothing here supports generalisation across habitus or urine osmolality.</div>
+
+<h4>Beta dispersion, and the frequency model the code actually uses</h4>
+
+<p>The 50 and 100 kHz operating points sit inside the <strong>β-dispersion</strong>, whose origin is Maxwell–Wagner interfacial polarisation at cell membranes. A cell membrane is a ~5 nm dielectric with specific capacitance <code>C<sub>m</sub> ≈ 1 μF/cm² = 10<sup>−2</sup> F/m²</code>, in series with intra- and extracellular electrolytes. For cells of radius <code>a</code> the characteristic frequency is</p>
+
+<p><code>f<sub>c</sub> = 1 / [2π C<sub>m</sub> a (1/σ<sub>i</sub> + 1/σ<sub>e</sub>)]</code>  (12)</p>
+
+<p>With <code>a = 25 μm</code> (muscle fibre) and <code>σ<sub>i</sub> = σ<sub>e</sub> = 0.5 S/m</code>, (12) gives <code>f<sub>c</sub> ≈ 160 kHz</code>. Below <code>f<sub>c</sub></code> membranes are effectively insulating: current is confined extracellularly, <code>σ</code> is low, and apparent <code>ε<sub>r</sub></code> is enormous (10<sup>4</sup>) because each cell acts as a giant polarisable inclusion. Above <code>f<sub>c</sub></code> membranes short out, <code>σ</code> rises and <code>ε<sub>r</sub></code> collapses. <strong>50–100 kHz sits below <code>f<sub>c</sub></code> on the rising flank, precisely where the dispersion is steepest</strong> — which explains the table: kidney (densely perfused, <code>ε<sub>r</sub> = 3×10<sup>4</sup></code>) has the largest <code>ωε/σ</code>, urine (a cell-free electrolyte, <code>ε<sub>r</sub> = 80</code>) essentially none.</p>
+
+<p>The code does <em>not</em> model this with a relaxation. <code>admittivity(name, f)</code> is a two-parameter log-frequency interpolant:</p>
+
+<p><code>σ(f) = σ<sub>0</sub> [1 + 0.04 log<sub>10</sub>(f/50 kHz)]</code>,   <code>ε<sub>r</sub>(f) = ε<sub>r,0</sub> (50 kHz/f)<sup>0.10</sup></code>  (13)</p>
+
+<p>rather than a Cole–Cole form <code>κ(ω) = σ<sub>s</sub> + jωε<sub>0</sub>[ε<sub>∞</sub> + Σ<sub>n</sub> Δε<sub>n</sub>/(1 + (jωτ<sub>n</sub>)<sup>1−α<sub>n</sub></sup>)]</code>. Three costs, in order of seriousness:</p>
+
+<ol>
+<li><strong>No characteristic frequency, so no causal link between <code>σ(ω)</code> and <code>ε(ω)</code>.</strong> Kramers–Kronig ties them; for a single Debye, <code>σ(ω) − σ<sub>s</sub> = ω²τ [ε(ω) − ε<sub>∞</sub>]</code>. In (13) the exponents 0.04 and 0.10 are set independently and satisfy no such relation: an interpolant over one octave, not a response function.</li>
+<li><strong>Far too shallow.</strong> Over 50→100 kHz (13) raises <code>σ</code> 1.2% and lowers <code>ε<sub>r</sub></code> 6.7%. A single Debye at the <code>f<sub>c</sub> ≈ 160 kHz</code> of (12), normalised to the same 50 kHz values, gives <code>ε<sub>r</sub></code> falling ~21% and <code>σ</code> rising ~14% — roughly 3× and 12× steeper.</li>
+<li><strong>No <code>α</code>, so no distribution of relaxation times</strong> — the parameter that makes real tissue spectra broader and flatter than a pure Debye. Nothing in the repository constrains it.</li>
+</ol>
+
+<div class="mm-warn">The 21% / 14% figures compare against <em>one illustrative single-Debye relaxation</em> from (12), not a fit to Gabriel or IT’IS data; they establish the order of the discrepancy, not its value. The test is to substitute a published 4-Cole–Cole parameterisation into <code>admittivity()</code> and re-run Studies 5 and 6 unchanged. Not done.</div>
+
+<p><strong>What that error actually costs.</strong> Less than it should. The estimator collapses the frequency axis before doing anything else: <code>zone_series</code> computes <code>ser = dZ.real.mean(axis=1)</code>, an unweighted mean over <code>FREQS = [50e3, 100e3]</code> of the <em>real part only</em>. No feature in <code>direction_features</code> forms a ratio, difference or phase across frequency; the imaginary part reaches the decision only through its effect on <code>Re Z</code> inside the complex solve. A dispersion slope 3× too shallow therefore perturbs every zone's operating point almost identically and largely cancels in a mean-removed, sign-of-slope statistic. The frequency model is close to inert <em>for the reported endpoint</em> — a limit on the study's scope, not a licence. Add any multi-frequency discriminant (a Cole ratio separating a urine bolus from bowel gas or oedema is the obvious next specificity feature, since urine's <code>ωε/σ < 3×10<sup>−4</sup></code> makes it spectrally unique among the five tissues) and (13) becomes the dominant modelling error and must be replaced first.</p>
+
+<h4>What the physics licenses, and what it does not</h4>
+
+<ul>
+<li><strong>Licensed.</strong> Equation (5) with complex <code>κ</code> and boundary conditions (6)–(9), at 50 and 100 kHz, in the <code>R = 5.5 cm</code>, <code>H = 20 cm</code> cylinder: retardation clears by two orders, induction costs at worst 2.7%. Differential and timing quantities from this model converge under refinement and support the reported direction claims.</li>
+<li><strong>Not licensed.</strong> Any absolute impedance value; any purely resistive simplification of <code>κ</code>; any multi-frequency spectral discriminant, which (13) is too crude to support; any statement about body habitus, fat thickness or urine osmolality, all constants here; and any anisotropy claim — muscle conductivity is markedly anisotropic, while <code>TISSUE</code> carries one isotropic scalar per tissue.</li>
+</ul>
+
+<p>Standing limitations apply in full: idealised cylinder, literature tissue values as point estimates with no uncertainty propagation, an assumed SNR budget, and no phantom or patient data of any kind.</p>

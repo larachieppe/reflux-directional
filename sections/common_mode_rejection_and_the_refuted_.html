@@ -1,0 +1,306 @@
+<h3>Common-mode rejection and the refuted gradient hypothesis</h3>
+
+<p>The estimator never looks at an impedance. It looks at the <em>ordering in time</em> of
+per-zone perturbations, and it gets there through two centering operations inside
+<code>_strip_aperture_stats</code>. This section does the algebra of those two operations,
+states exactly which disturbances they annihilate and which they cannot, derives the one
+disturbance class predicted to defeat them — a craniocaudal motion gradient — and
+then reports that Study 6 measured that prediction and refuted it. The refutation is the
+authors' own stated existential risk for the method, and it did not materialise.</p>
+
+<h4>1. What the across-zone mean actually removes</h4>
+
+<p>Let a strip-and-aperture group contain <i>N</i> zones with realised sense-midpoint heights
+<i>z</i><sub>1</sub> < … < <i>z<sub>N</sub></i> (<code>world.zone_z</code>, taken
+from meshed facet centroids, not requested positions). Write the per-zone series
+<code>ser[j,t]</code>, formed in <code>zone_series</code> as
+Re {d<i>Z</i>} averaged over the two excitation frequencies, as</p>
+
+<p><code>r<sub>j</sub>(t) = c(t) + a<sub>j</sub> + s(t − τ<sub>j</sub>) +
+n<sub>j</sub>(t)</code>   (1)</p>
+
+<p>with <code>c(t)</code> a per-frame term shared by every zone (contact drift, bulk body
+motion, correlated instrument noise), <code>a<sub>j</sub></code> a per-zone constant
+(calibration offset, residual reference error), and
+<code>s(t − τ<sub>j</sub>)</code> the travelling bolus term whose arrival times
+<code>τ<sub>j</sub></code> carry the entire diagnosis. The code applies</p>
+
+<p><code>ser −= ser.mean(axis=0)</code>  (across zones, per frame, only if
+<code>nz ≥ 3</code>)   (2)<br>
+<code>ser −= ser.mean(axis=1)</code>  (across time, per zone, always)
+  (3)</p>
+
+<p>Operation (2) is the orthogonal projector
+<code>P<sub>z</sub> = I<sub>N</sub> − (1/N) 11<sup>T</sup></code> acting on the
+zone index; (3) is <code>P<sub>t</sub></code> acting on the time index. Applied to (1) in
+matrix form <b>R</b> = <b>1</b>c<sup>T</sup> + a<b>1</b><sup>T</sup> + <b>S</b> + <b>N</b>,</p>
+
+<p><code>P<sub>z</sub> R P<sub>t</sub> = P<sub>z</sub> S P<sub>t</sub> +
+P<sub>z</sub> N P<sub>t</sub></code>   (4)</p>
+
+<p>because <code>P<sub>z</sub>1 = 0</code> kills the common frame term and
+<code>1<sup>T</sup>P<sub>t</sub> = 0</code> kills the per-zone constant. <b>Double centering
+annihilates exactly the additive rank-one family</b> <code>c(t) + a<sub>j</sub></code> and
+nothing more. This is the formal content of the audited no-op result: adding an arbitrary
+per-zone complex constant to <code>dZ</code> moves the decision evidence by
+<b>8.9×10<sup>−16</sup></b>, i.e. by the floating-point residue of (3). It is
+also why the resting-reference subtraction cannot change the direction call —
+<code>base = Z[:2].mean(axis=0)</code> contributes a per-zone constant, which (3) removes.
+The reference is not useless: the gain <code>1/|Zref|</code> and the <code>energy</code> and
+<code>dif_energy</code> features, which drive strip selection and the aperture fusion weights,
+all survive it.</p>
+
+<p>What (4) does <em>not</em> remove is equally important. The signal term becomes
+<code>s(t − τ<sub>j</sub>) − (1/N)Σ<sub>k</sub>
+s(t − τ<sub>k</sub>)</code>: the bolus is partly subtracted from itself, since the
+common-mode estimate is built from the very zones that contain it (§7). And any
+<em>multiplicative</em> disturbance <code>f(z<sub>j</sub>) d(t)</code> with non-constant
+<code>f</code> and non-constant <code>d</code> survives double centering intact. That
+observation is the hinge of §5.</p>
+
+<h4>2. Two zones cannot reject common mode — and the N=5 corollary</h4>
+
+<p>Set <i>N</i> = 2 in (2). The mean is <code>(r<sub>1</sub>+r<sub>2</sub>)/2</code>, so</p>
+
+<p><code>r̃<sub>1</sub> = (r<sub>1</sub> − r<sub>2</sub>)/2</code>,
+ <code>r̃<sub>2</sub> = (r<sub>2</sub> − r<sub>1</sub>)/2 =
+−r̃<sub>1</sub></code>   (5)</p>
+
+<p>The two mean-removed series are <b>exact negatives</b>. The rank of
+<code>P<sub>z</sub></code> is <i>N</i>−1 = 1, so the pair spans a one-dimensional space
+and carries one waveform, not two. Every lag <code>xcorr_lag</code> could have estimated is
+gone: with <code>b = −a</code>, after the internal <code>_norm</code>,
+<code>c(L) = −ρ<sub>aa</sub>(L)</code>, whose maximum over
+|L| ≤ <code>max_lag</code> = 2n/3 is attained wherever the autocorrelation is
+<i>most negative</i>. For a smooth unipolar bolus passage that is the edge of the search
+window, and its sign is set by whichever tail of the noise happens to be larger. The estimate
+is not merely zero — it is saturated and sign-arbitrary. Hence the guard
+<code>if nz >= 3</code>, whose in-code comment states the same conclusion: “a 2-zone
+aperture cannot reject common mode … a structural property of the geometry, not a
+tuning choice.”</p>
+
+<p>Now push it through <code>tetrapolar_zones</code>. For <i>N</i><sub>elec</sub> electrodes
+per strip the odd outer gaps are <code>range(3, N, 2)</code> and aperture <i>G</i> yields
+<i>N</i> − <i>G</i> zones. At <i>N</i> = 5 the only gap is <i>G</i> = 3,
+giving <b>exactly two zones and one aperture</b>. Three consequences follow mechanically, and
+they compound:</p>
+
+<ul>
+<li>Line (2) is skipped, so <code>c(t)</code> passes untouched into the lag estimator, where
+it contributes a lag-zero peak that competes directly with the travelling term.</li>
+<li><code>lin</code> is hard-set to <code>0.0</code> (“2 points are trivially
+collinear”), so no wave-linearity evidence exists.</li>
+<li><code>decide_direction</code> gates on <code>f["n_zones"] >= 3 and f["lin"] <
+lin_gate</code>. With <code>n_zones = 2</code> the gate is <em>never evaluated</em>, so
+<b>a 5-electrode strip can never abstain</b>: it emits ±1 on every window, including
+empty ones, using a lag statistic with no common-mode rejection.</li>
+</ul>
+
+<p>At <i>N</i> = 4 the single zone leaves <code>nz < 2</code>, <code>defined = False</code>,
+and the device abstains always — structurally undecidable, and honest about it.
+<i>N</i> = 5 is the dangerous case: confident, ungated, unprotected. The Study 6
+configuration uses <code>n_strip = 8</code>, giving zone counts 5 / 3 / 1
+at <i>G</i> = 3 / 5 / 7 — two usable apertures, the deepest discarded
+for having one zone.</p>
+
+<h4>3. The gradient hypothesis, stated properly</h4>
+
+<p>The motion model in <code>base_sigma</code> and <code>add_bolus</code> displaces tissue by a
+height-weighted vector, <code>w = (1−g) + g z/H</code> with
+<i>H</i> = 20 cm, so the displacement of material at height <i>z</i> is</p>
+
+<p><code>u(z,t) = d(t) [(1−g) + g z/H]</code>   (6)</p>
+
+<p>Over a sensed span with zone centroid <code>z̄</code>, decompose (6) about that
+centroid:</p>
+
+<p><code>u(z<sub>j</sub>,t) = d(t) w̄ + (g d(t)/H)(z<sub>j</sub> −
+z̄)</code>,   <code>w̄ = (1−g) + g z̄/H</code>
+  (7)</p>
+
+<p>The first term is uniform across zones: a rigid translation, precisely the disturbance
+<code>P<sub>z</sub></code> annihilates, and precisely what <code>draw_motion</code> produced in
+every study before Study 6 (“COMMON across every zone and both strips”). A
+rigid-only motion model can therefore only ever <em>confirm</em> common-mode rejection; it is
+a tautology dressed as a result, and the code says so. The second term is <b>zero-mean and
+linear in z</b>, so <code>P<sub>z</sub></code> leaves it untouched.</p>
+
+<p>The predicted damage runs through arrival time. A zone at lab height <i>z<sub>j</sub></i>
+meets the bolus when the bolus, advected with the tissue at speed <i>v</i>, reaches material
+coordinate <i>z<sub>j</sub></i> + <i>u</i>(<i>z<sub>j</sub></i>). Taking
+<i>d<sub>z</sub></i> quasi-static over the passage,</p>
+
+<p><code>τ<sub>j</sub> = τ<sub>j</sub><sup>(0)</sup> +
+(w̄ d<sub>z</sub> − g d<sub>z</sub> z̄/H)/v +
+(g d<sub>z</sub>/(vH)) z<sub>j</sub></code>   (8)</p>
+
+<p>The middle term is a constant absorbed by the intercept of the least-squares fit
+<code>A = [z, 1]</code>. The last is proportional to <i>z<sub>j</sub></i> and lands directly on
+the regression slope — the diagnostic quantity:</p>
+
+<p><code>dτ/dz = (1/v)(1 + g d<sub>z</sub>/H)</code>   (9)</p>
+
+<p>So the gradient's first-order effect on the sign-carrying statistic is <b>multiplicative,
+not additive</b>. At <i>g</i> = 1, <i>H</i> = 20 cm and the largest injected amplitude
+<i>d<sub>z</sub></i> = 3 cm, the slope is scaled by 1 ± 0.15. A sign
+flip needs <code>g d<sub>z</sub>/H < −1</code>, i.e.
+|<i>d<sub>z</sub></i>| ≥ 20 cm — the full torso height. <b>Equation (9) alone
+already says a quasi-static gradient cannot invert the diagnosis.</b> The genuine worry was
+the dynamic version: with <i>d<sub>z</sub></i>(<i>t</i>) oscillating at the breathing rate
+(<code>draw_motion</code> puts 0.30 Hz on the superior-inferior axis with a random phase),
+the surviving zero-mean linear term was expected to look like a phase-locked false travelling
+wave, mimicking retrograde flow in a healthy child.</p>
+
+<h4>4. Study 6 measured it, and refuted it</h4>
+
+<p>2160 trials: <code>n_strip = 8</code>, span 16 cm, SNR 60 dB, <i>T</i> = 20
+frames, 36 trials × 4 classes × 5 amplitudes × 3 gradients. Marginals over
+gradient (<code>metrics_motion2.json</code>):</p>
+
+<table class="mm-t">
+<tr><th>gradient <i>g</i></th><th>false-retrograde on empty windows</th><th>direction accuracy
+(all travelling)</th></tr>
+<tr><td>0.0 (rigid)</td><td>15.8%</td><td>71.9%</td></tr>
+<tr><td>0.5</td><td>12.8%</td><td>74.4%</td></tr>
+<tr><td>1.0 (full gradient)</td><td>14.4%</td><td>79.4%</td></tr>
+</table>
+
+<p>There is no penalty at any amplitude, and the full-gradient arm is nominally the
+<em>best</em>. The predicted phase-locked false travelling wave does not appear anywhere in
+the grid.</p>
+
+<div class="mm-warn"><p><b>Do not read the table as evidence that the gradient helps.</b> The
+three <i>g</i> arms at amplitude 0 are <em>bit-identical</em> cells (false-retrograde 0.1111,
+dir_acc 1.000, empty_lin 0.2939, empty_abstain 0.7083 in all three), because
+<code>base_sigma</code> multiplies <code>w</code> by <code>shift</code>, so <i>g</i> has no
+effect when <code>shift = 0</code>. One fifth of every marginal is literally the same 72
+trials, and the remaining cells are seed-paired. An unpaired two-proportion test on
+71.9% vs 79.4% (<i>n</i> = 360 each) returns <i>z</i> ≈ 2.3, but that test is invalid
+here and no multiplicity correction has been applied across the 15 cells. The defensible
+claim is <b>“no measurable degradation”</b>, not “improvement”.</p></div>
+
+<h4>5. Why the mechanism did not materialise — post hoc and untested</h4>
+
+<p>The following explanations were constructed <b>after</b> seeing the result, by reading the
+model. None has been tested. They are hypotheses, ranked by how directly the code supports
+them.</p>
+
+<ol>
+<li><b>The model's motion is separable, so its residual is standing, not travelling.</b> In
+(6) the whole temporal degree of freedom is a single 3-vector <code>disp[t]</code>; the
+gradient modulates <em>amplitude</em> with <i>z</i> and never <em>phase</em>. To first order
+the no-bolus residual is <code>δr<sub>j</sub>(t) ≈
+ρ(z<sub>j</sub>) u(z<sub>j</sub>,t) = f(z<sub>j</sub>) d<sub>z</sub>(t)</code>
+— rank one and multiplicative. Double centering leaves it (§1), but every row is
+then the <em>same waveform</em> up to a scalar. Cross-correlating rows of a rank-one separable
+matrix gives lag 0 for like-signed <code>f</code>, so <code>tarr</code> is constant,
+<code>ss_tot ≈ 0</code>, <code>lin</code> collapses to 0.0 by the explicit
+<code>ss_tot > 1e-12</code> branch, and the trial <b>abstains</b>. Where
+<code>f</code> changes sign across the strip the rows anticorrelate, lags saturate at the
+window edge, <code>tarr</code> scatters, <code>lin</code> falls again, and the trial abstains.
+Both branches route to abstention, not to a false direction — which is exactly the
+measured failure signature.</li>
+<li><b>Equation (9) is sign-preserving.</b> Even in the quasi-static limit where the gradient
+does reach the slope, it rescales rather than reverses it, by 15% at the extreme.</li>
+<li><b>Aperture fusion dilutes it.</b> <code>direction_features</code> fuses <i>G</i> = 3 and
+<i>G</i> = 5 with weight <code>base × (0.25 + q) × sqrt(dif_energy)</code>. A
+gradient artifact scales with the aperture's axial lever arm in the same way the real slope
+does, so it is not preferentially amplified in either arm.</li>
+</ol>
+
+<div class="mm-warn"><p><b>Explanation 1, if correct, converts the refutation into a statement
+about the motion model rather than about the physics.</b> Real respiratory mechanics is not
+separable: diaphragmatic excursion propagates caudally with a viscoelastic delay, so the
+displacement field is closer to <code>u(z,t) = d(t − z/c<sub>prop</sub>) w(z)</code>
+— a genuine travelling deformation with a z-dependent <b>phase</b>, which is the only
+form that can synthesize a coherent false arrival-time ramp. <b>Nothing in this repository
+implements phase-lagged motion, and the negative Study 6 result therefore does not
+retire the risk it was built to test.</b> The decisive experiment is one parameter:
+re-run the Study 6 grid with <code>c<sub>prop</sub></code> swept over a range bracketing
+the bolus transit speed <i>v</i>, and report false-retrograde rate against
+<code>v/c<sub>prop</sub></code>. Resonance at <code>c<sub>prop</sub> ≈ v</code> would be
+the failure the gradient arm was supposed to expose.</p></div>
+
+<h4>6. What did degrade, and why abstention is the safe failure</h4>
+
+<p>Amplitude, not gradient, is what hurts. At <i>g</i> = 1.0:</p>
+
+<table class="mm-t">
+<tr><th>motion amplitude</th><th>raw accuracy</th><th>accuracy on decided trials</th>
+<th>abstain rate</th></tr>
+<tr><td>0 cm</td><td>100%</td><td>100%</td><td>0%</td></tr>
+<tr><td>1 cm</td><td>91.7%</td><td>97.1%</td><td>5.6%</td></tr>
+<tr><td>2 cm</td><td>58.3%</td><td>84.0%</td><td>30.6%</td></tr>
+<tr><td>3 cm</td><td>47.2%</td><td>68.0%</td><td>30.6%</td></tr>
+</table>
+
+<p>Raw accuracy halves while accuracy <em>conditional on deciding</em> falls only to 68%, and
+the difference is carried entirely by abstention. That is the clinically correct shape: the
+device degrades into “repeat the study”, not into a confident wrong direction, and
+the failure is <em>self-announcing</em> because the abstain rate is observable at the bedside
+without a ground truth. The mechanism is the wave-linearity gate: motion destroys the
+collinearity of <code>tarr</code> against <code>z</code> before it inverts its slope, so
+<code>lin</code> crosses below <code>LIN_GATE</code> earlier than the sign flips.</p>
+
+<p>The residual to be honest about is the <b>11.1% false-retrograde floor at literally zero
+motion and zero gradient</b>. Its arithmetic is visible: 70.8% of empty windows abstain, so
+21 of 72 are decided, and 8 of those 21 (38%) are called retrograde — near coin-flip
+sign on windows containing no travelling event. The floor is therefore a property of the gate,
+not of motion: mean empty-window <code>lin</code> is 0.294 against a threshold of 0.35, so a
+substantial upper tail of noise-only windows clears it, and past the gate the sign is
+arbitrary. <b><code>LIN_GATE = 0.35</code> is a single hand-set constant, Youden-selected once
+at 0.45 cm motion and never swept anywhere in the repository.</b> The 11.1% is one
+unlabelled point on an ROC that has never been drawn; sweeping the gate over
+[0.2, 0.8] on the existing saved records would cost no new solves and would turn a
+floating number into a specificity/yield operating curve.</p>
+
+<h4>7. The common-mode estimate uses the zones that contain the signal</h4>
+
+<p>In <code>_strip_aperture_stats</code> the selector is
+<code>sel = (world.zone_strip == strip) & (world.zone_m == m)</code>, and the mean in (2)
+is taken over exactly those zones. The common-mode reference is thus built from the same
+aperture, on the same strip, that the bolus is traversing. Substituting into (4), the surviving
+signal is</p>
+
+<p><code>s̃<sub>j</sub>(t) = s(t − τ<sub>j</sub>) − (1/N)Σ<sub>k</sub>
+s(t − τ<sub>k</sub>)</code>   (10)</p>
+
+<p>The subtrahend is <i>s</i> smeared by a discrete boxcar of width equal to the end-to-end
+transit time Δτ — a low-passed copy of the wanted signal. For the mid-strip
+zones, whose arrival time sits near the mean, (10) removes most of the excursion; the estimator
+is best conditioned at the ends of the strip and worst in the middle, which is also where the
+lever arm of the fit contributes least. At <i>N</i> = 5 zones (the <i>G</i> = 3 aperture in
+Study 6) the self-subtraction takes a full 20% of each zone's own amplitude, and it
+couples every pair of rows with weight <code>−1/(N−1)</code> — the induced
+correlation discussed in the noise section, here compounded by the fact that the removed part
+is signal rather than noise.</p>
+
+<p>Meanwhile the device already carries a naturally signal-free reference: for unilateral
+reflux, <b>the contralateral strip sees the same posture, the same breathing, the same
+electronics and no bolus</b>. <code>zone_strip</code> exists, both strips are measured in every
+frame by <code>measure_zones</code>, and <b>no code path anywhere in the repository forms a
+cross-strip common-mode estimate</b>. The two strips are combined only at the very end, in
+<code>decide_direction</code>'s <code>max(… dif_energy)</code> selector and in the
+<code>energy_asym</code>/<code>lag_asym</code> features.</p>
+
+<p>The study that settles it is small and fully specified: replace the within-group mean in (2)
+with (a) the across-zone mean of the contralateral strip at the matched aperture, and (b) the
+leading principal component of the pooled two-strip zone matrix, then re-run the Study 6
+grid at <em>identical seeds</em> and compare per-trial, paired, on abstain rate and on
+false-retrograde rate. Three arms are mandatory, not optional: unilateral reflux (where the
+contralateral reference is clean), <b>bilateral reflux</b> (where it is contaminated and the
+method should be expected to fail), and empty windows. Because <code>dZ</code> is already
+fractional, the known inter-strip electrode-area asymmetry — roughly 23% less realised
+area on one side, 25–57% higher |Z| — is largely normalised out, but a residual
+per-zone gain calibration must be fitted on the first two frames and reported, or the
+cross-strip estimate will import that asymmetry as a spurious common mode.</p>
+
+<div class="mm-warn"><p><b>Scope.</b> Every number here comes from one idealised cylinder
+(<i>R</i> = 5.5 cm, <i>H</i> = 20 cm, 6 rings, 17 layers) with literature tissue
+values and an <em>assumed</em> SNR budget; <code>draw_anatomy</code> varies organ positions
+only, so torso radius, fat thickness, organ sizes and all conductivities are identical across
+every “simulated child”. The mesh study additionally shows that absolute |Z| does
+not converge (11–76% error, oscillating) while the arrival-time slope does
+(6.80 → 0.11%), so nothing above should be read as an impedance claim
+— only as a claim about differential timing. No phantom and no patient data exist for
+any of it.</p></div>

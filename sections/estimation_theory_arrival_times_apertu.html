@@ -1,0 +1,318 @@
+<h3>Estimation theory: arrival times, aperture fusion, and the abstain gate</h3>
+
+<p>The device claims a <em>sign</em>, produced by a specific chain of operations in
+<code>_strip_aperture_stats</code>, <code>direction_features</code> and
+<code>decide_direction</code>. Treated as an estimator, that chain is
+<strong>consistent in sign and inefficient in magnitude</strong>, and three of its constants
+have never been varied.</p>
+
+<h4>1. The estimand and the pipeline</h4>
+
+<p>Write the common-mode-rejected, frequency-averaged real series for zone <em>j</em> of one
+aperture as</p>
+
+<p><code>ser[j,t] = c(t) + b(t − τ<sub>j</sub>) + n<sub>j</sub>(t)</code>,  
+τ<sub>j</sub> = z<sub>j</sub> / v   (1)</p>
+
+<p>with <em>b</em> the passage waveform, <em>c</em> a zone-shared drift and <em>v</em> the signed
+axial bolus velocity. The estimand is neither <em>v</em> nor τ but
+<strong>sign(dτ/dz)</strong>. Lags are never converted to seconds —
+<code>xcorr_lag</code> returns samples, <code>slope</code> is samples·cm<sup>−1</sup>,
+no frame rate appears in <code>simulate_trial</code> — which is discipline, not omission: a
+velocity claim would need the frame rate the sibling noise section shows to be implicit and
+unbudgeted, and a sign claim does not. Three stages follow — per-zone delay by
+cross-correlation against <code>ser[0]</code>, least squares of <code>tarr</code> on
+<code>zone_z</code>, weighted fusion across apertures gated by fit quality — and each has a
+textbook optimal version the code does not implement.</p>
+
+<h4>2. Variance of a cross-correlation delay, and the bound</h4>
+
+<p>For a delay taken as the argmax of a correlation <em>R</em>(L), perturbing the stationarity
+condition <em>R</em>′(τ̂) = 0 to first order under additive noise gives</p>
+
+<p>var(τ̂) ≈ <em>k</em> σ<sub>eff</sub><sup>2</sup> /
+[ <em>E</em><sub>b</sub> |<em>R</em><sub>bb</sub>″(0)| ]   (2)</p>
+
+<p>with <em>E</em><sub>b</sub> the passage energy and <em>R</em><sub>bb</sub>″(0) the
+curvature of the waveform autocorrelation at zero lag. The Cramér–Rao bound for
+time-delay estimation in white Gaussian noise has the same shape,
+var(τ̂) ≥ 1/(SNR<sub>out</sub> β<sup>2</sup> <em>T</em><sub>obs</sub><em>B</em><sub>w</sub>),
+β<sup>2</sup> the mean-square bandwidth. Both say: <strong>precision buys down as 1/SNR and
+as the square of response sharpness</strong>. σ<sub>eff</sub> is the post-processing noise
+the sibling section derives (its eq. 7),
+σ<sub>eff</sub> ≤ σ<sub>n</sub>√(1/F)√(1−1/n) =
+0.632 σ<sub>n</sub> for F = 2 and five zones.</p>
+
+<p>Sharpness is where this device is structurally disadvantaged. <code>bolus_path</code>
+deliberately imposes no rise/fall envelope, so each zone's response is a smooth passage lasting a
+large fraction of the record: at the design configuration (<code>metrics_design.json</code>:
+<code>n_strip 8</code>, <code>span 16.0</code>, <code>T 20</code>) the grade-III bolus covers
+12.24 cm in 19 intervals, 0.644 cm frame<sup>−1</sup>. Broad response, small
+β, so (2) is large in absolute terms. The estimator survives only by collapsing to a
+sign.</p>
+
+<h4>3. Two biases the implementation accepts</h4>
+
+<p><strong>(a) Bartlett shrinkage toward zero lag.</strong> <code>xcorr_lag</code> divides every
+lag product by <code>n</code>, not the overlap <code>n − |L|</code>. The comment defends
+this correctly — the unbiased form lets noise win at the extremes — but the computed
+correlation is then the true one times a Bartlett taper
+<em>w</em>(L) = 1 − |L|/<em>n</em>, and a tapered peak moves toward zero by about</p>
+
+<p>Δτ ≈ − [<em>w</em>′(τ)/<em>w</em>(τ)] ·
+<em>R</em>(τ)/<em>R</em>″(τ)   (3)</p>
+
+<p>strictly toward the origin, therefore <strong>sign-preserving but
+magnitude-attenuating</strong>. Every lag and slope magnitude here is biased low, by an amount
+growing with the lag measured — an independent reason no velocity or grade-from-magnitude
+claim is supported.</p>
+
+<p><strong>(b) Delay clipping at the useful lever arms.</strong> <code>max_lag</code> defaults to
+<code>max(3, (2*n)//3)</code>, so <em>T</em> = 20 gives a ±13-sample window. At N = 8 over
+a 16 cm span the pitch is 2.286 cm and the widest usable aperture (G = 3) spans
+9.14 cm of zone centroids — an end-to-end delay of 9.14/0.644 = 14.2 frames,
+<em>outside</em> the window, and at L = 13 the taper has already removed 65% of the correlation.
+The aperture with the best lever arm is the one whose delay is most clipped. The sign survives
+(the argmax saturates at the boundary with correct polarity) but the lever-arm benefit saturates
+rather than scaling.</p>
+
+<div class="mm-warn">This clipping analysis is derived from code constants and grade-III path
+geometry, not measured; it is worse for low grades, whose boluses are slower
+(<code>GRADE_TABLE</code> reach 0.20 at grade I). No run logs <code>tarr</code> against
+<code>max_lag</code>, so the saturation rate is unknown. One counter would fix that.</div>
+
+<h4>4. Is the estimator efficient? No, and what a matched filter would buy</h4>
+
+<p>All <em>n</em> delays are measured against a single reference, <code>ser[0]</code>
+(<code>tarr[j], peaks[j] = xcorr_lag(ser[0], ser[j])</code>). Every τ̂<sub>j</sub>
+therefore shares zone 0's noise, so
+cov(τ̂<sub>i</sub>, τ̂<sub>j</sub>) carries a common positive term and the
+residual covariance is dense with rank-one structure — on top of the
+−1/(<em>n</em>−1) correlation across-zone mean removal already induces. The efficient
+estimator under (1) is a <strong>matched filter</strong>: correlate each zone against the known
+passage template <em>b</em>(·), which the forward model generates exactly by sweeping the
+bolus along <code>bolus_path</code> with noise off. That would (i) remove the reference-noise
+coupling, (ii) attain the CRLB rather than approach it, and (iii) emit a likelihood ratio —
+a calibrated detection statistic that would <em>replace</em> the
+hand-set gate of §8 with a Neyman–Pearson threshold. <strong>It has not been tried;
+no code path builds a template.</strong> Likewise the discarded imaginary part: the quasi-static
+audit gives ωε/σ = 1.40 for kidney at 100 kHz, so Im(dZ) carries real
+information that <code>zone_series</code> drops for a defensible linearity reason, with no one
+measuring the Fisher information lost.</p>
+
+<h4>5. The slope fit: OLS where WLS is called for, and the leverage of a dead zone</h4>
+
+<p>The fit is plain unweighted least squares,
+<code>coef = np.linalg.lstsq(np.vstack([zz, np.ones_like(zz)]).T, tarr)</code>. For
+equal-variance independent delays the slope standard error is</p>
+
+<p>se(slope) = σ<sub>τ</sub> / √(Σ<sub>j</sub>(z<sub>j</sub> − z̄)<sup>2</sup>)
+≈ σ<sub>τ</sub> √12 / (<em>B</em> √<em>n</em>)   (4)</p>
+
+<p>for <em>n</em> equally spaced zones spanning an axial baseline <em>B</em>: precision scales as
+<em>B</em>√<em>n</em>, <strong>the axial lever arm of the zone centroids</strong>, not
+electrode separation and not electrode count.</p>
+
+<p>Equal weighting is wrong here in a way that is not merely inefficient. For low grades the
+zones above the bolus's reach see <em>no</em> signal — a grade-I event reaches only 0.20 of
+the bladder-to-kidney distance, so the superior half of a 16 cm strip regresses pure noise
+— and under OLS such a zone is not just uninformative but <em>influential</em>, sitting at
+the extreme of the regressor where leverage is highest:</p>
+
+<table class="mm-t">
+<tr><th>zones in aperture</th><th>Σ(z−z̄)<sup>2</sup> (unit pitch)</th><th>endpoint leverage h<sub>jj</sub></th></tr>
+<tr><td>3</td><td>2</td><td>0.833</td></tr>
+<tr><td>5</td><td>10</td><td>0.600</td></tr>
+</table>
+
+<p>A single dead endpoint zone owns 83% of the slope in a three-zone aperture and 60% in a
+five-zone one. That is a mechanical explanation for the Study 5 <em>low-grade-never-detected</em>
+gap (43/57/21/21% for the 16 cm arm versus 0/0/7/14% for the 10 cm arm) that never
+invokes depth sensitivity: the long strip puts more signal-free zones at high leverage.
+Inverse-variance weights 1/var(τ̂<sub>j</sub>), estimable from each zone's own
+correlation peak <code>peaks[j]</code> — already computed, then merely averaged —
+would down-weight exactly those zones. <strong>WLS is not implemented and has not been
+tried.</strong> OLS does stay unbiased in <em>sign</em> under symmetric noise, which is why the
+decision survives an estimator this crude.</p>
+
+<div class="mm-warn">The leverage mechanism is derived and consistent with Study 5, but not
+isolated from the depth-sensitivity explanation. The discriminating experiment needs no new
+forward solves: re-score stored trials with signal-free zones excluded and see whether the
+16 cm arm's low-grade gap closes.</div>
+
+<h4>6. The lever-arm identity, and the corrected electrode-count result</h4>
+
+<p>For <em>N</em> electrodes at pitch <em>s</em>, <code>tetrapolar_zones</code> drives
+(<em>k</em>, <em>k</em>+G) and senses (<em>k</em>+c, <em>k</em>+c+1) with c = (G−1)/2, so
+<code>zone_z</code> sits at (<em>k</em> + G/2)<em>s</em> and <em>k</em> runs
+0 … <em>N</em>−G−1. Hence</p>
+
+<p>aperture width <em>A</em>(G) = G <em>s</em>,  
+lever arm <em>B</em>(G) = (<em>N</em>−1−G) <em>s</em>,  
+<strong><em>A</em>(G) + <em>B</em>(G) = (<em>N</em>−1)<em>s</em> = span</strong>   (5)</p>
+
+<p>with zone count <em>n</em>(G) = <em>N</em> − G per strip. (5) is exact, and it is the
+central design constraint of the instrument: <strong>on a fixed span, every centimetre of
+aperture — that is, of depth reach — is paid for one-for-one out of the timing lever
+arm.</strong> Depth and timing precision are in strict zero-sum competition.</p>
+
+<p>This reproduces the <code>direction_features</code> docstring numbers exactly. At
+<em>N</em> = 12 on a 12 cm span, <em>s</em> = 1.091 cm:</p>
+
+<table class="mm-t">
+<tr><th>G</th><th>aperture A (cm)</th><th>lever arm B (cm)</th><th>zones n</th><th>rel. se(slope) by (4)</th><th>measured score</th></tr>
+<tr><td>3</td><td>3.27</td><td>8.73</td><td>9</td><td>1.00</td><td>0.94</td></tr>
+<tr><td>9</td><td>9.82</td><td>2.18</td><td>3</td><td>6.9</td><td>0.19</td></tr>
+</table>
+
+<p>The predicted precision ratio is (8.73/2.18)√(9/3) = 4.0 × 1.73 = 6.9, and the
+measured accuracies move in that order. This is the <strong>corrected</strong> explanation of the
+earlier "more electrodes is worse" finding: an artifact of a greedy selector that picked one
+aperture by per-zone energy. Energy is monotone in depth reach and blind to <em>B</em>, so the
+selector bought the numerator of the SNR with the denominator of (4). Forcing each aperture on
+identical data showed the greedy pick losing at every <em>N</em> ≥ 8 (N = 8: 0.81 greedy vs
+1.00 best fixed; N = 12: 0.81 vs 1.00). Electrode count was never the problem; the selection rule
+was.</p>
+
+<p>(5) also exposes an untested interaction between design studies. Study 5 overturns the locked
+16 cm @ z = 0.50 placement in favour of 10 cm @ z = 0.34. But at <em>N</em> = 8 that
+cuts the pitch from 2.286 to 1.429 cm and the G = 3 lever arm from 9.14 to 5.71 cm
+— a 1.6× inflation of se(slope) by (4). <strong>Placement robustness and timing
+precision were optimised separately and never scored jointly.</strong></p>
+
+<h4>7. Aperture fusion: right variables, wrong exponents, never varied</h4>
+
+<p>The implemented weight is, verbatim,
+<code>w = base * (0.25 + q) * np.sqrt(max(c["dif_energy"], 0.0))</code>, with
+<code>base = z_baseline</code> and <code>q = max(lin, 0)</code> for <em>n</em> ≥ 3, else the
+literal <code>0.35</code>.   (6)</p>
+
+<p>Inverse-variance weighting of slope estimates, from (4), would instead use</p>
+
+<p><em>w</em><sub>opt</sub> ∝ 1/se<sup>2</sup> ∝
+<em>B</em><sup>2</sup> · <em>n</em> · SNR<sub>zone</sub>   (7)</p>
+
+<p>Comparing (6) with (7): the baseline exponent is 1 where theory says 2; the zone count
+<em>n</em> is absent; energy enters as √<em>E</em> where theory says <em>E</em>; and
+(0.25 + <em>R</em><sup>2</sup>) is an affine rescaling with no derivation. The weight is
+<strong>monotone in the right three variables and wrong in every exponent</strong>. Plainly:
+<em>the fusion weighting is heuristic, not derived from a noise model, and no variant of it has
+ever been run</em>. The constants 0.25 and the 0.35 two-zone fallback appear once each in the
+repository and are swept nowhere.</p>
+
+<p>The fused estimates are also strongly dependent — apertures share electrodes, adjacent
+zones share three of four — so independence-derived weights leave the mean unbiased but make
+any interval on the fused slope optimistic. None is quoted, which is right. Similarly
+<code>ev = f["lag"] + f["slope"]</code> adds two correlated estimators of the same quantity rather
+than averaging them: sign-correct, but <code>ev</code> is not a calibrated confidence and is not
+used as one.</p>
+
+<h4>8. The abstain gate is an operating point, chosen once</h4>
+
+<p><code>LIN_GATE = 0.35</code> is a single hand-set scalar, its provenance comment recording a
+Youden-optimal selection on measured <code>lin</code> distributions at 0.45 cm motion:
+96.4% of real events kept, 71.4% of empty ones rejected, J = 0.678. Three things follow.</p>
+
+<p><strong>(a) Youden selection on evaluation data is optimistically biased.</strong> At a
+<em>fixed</em> threshold with N positives and N negatives, the SE of the empirical J is
+√[0.964·0.036/N + 0.714·0.286/N] = 0.035 at N = 200. Maximising over a
+threshold grid inflates reported J by about the expected maximum of that noise; neighbouring
+thresholds are highly correlated, so the effective number of independent tries is small (order
+3–5) and E[max] ≈ 0.9–1.2 SE — <strong>an optimism of roughly 3–4
+points of J</strong>, a few points of specificity at fixed sensitivity. Fixable at zero simulation
+cost: pick the gate on a held-out split of subjects and report on the remainder.</p>
+
+<div class="mm-warn">That optimism figure is an order-of-magnitude estimate: the sample size
+actually used to pick 0.35 is recorded in no metrics file, and the residuals entering
+<code>lin</code> are neither independent nor identically distributed. The claim to trust is not
+"3–4 J points" but "non-zero and currently unmeasured".</div>
+
+<p><strong>(b) One gate for every aperture size is indefensible.</strong> <code>lin</code> is the
+<em>R</em><sup>2</sup> of a two-parameter fit, so its null depends sharply on zone count: for
+<em>n</em> = 3 (one residual df) it is Beta(½,½), CDF (2/π)arcsin√x; for
+<em>n</em> = 5, Beta(½, 3/2), CDF
+(2/π)[arcsin√x + √(x(1−x))]. At 0.35:</p>
+
+<table class="mm-t">
+<tr><th>zones</th><th>residual df</th><th>P(lin ≥ 0.35 | pure noise)</th></tr>
+<tr><td>3</td><td>1</td><td>59.7%</td></tr>
+<tr><td>5</td><td>3</td><td>29.3%</td></tr>
+</table>
+
+<p>A three-zone aperture fed pure noise clears the gate three times in five. One scalar threshold
+across zone counts is therefore an operating point whose false-pass rate varies twofold with
+geometry. A zone-count-dependent gate — equivalently a p-value or F-statistic in place of
+raw <em>R</em><sup>2</sup> — is the first thing to sweep.</p>
+
+<div class="mm-warn">Those null probabilities assume iid Gaussian residuals. The real residuals
+are correlated by across-zone mean removal (−1/(n−1) pairwise) and by the shared
+<code>ser[0]</code> reference, and the gated quantity is the <em>fused</em> weighted average of
+<code>lin</code>, for which no closed-form null exists. Right order of magnitude and right
+direction, not calibrated sizes; a permutation null over stored noise-only windows would give
+exact numbers.</div>
+
+<p><strong>(c) Two structural quirks.</strong> <code>decide_direction</code> tests
+<code>f["lin"]</code> — the fused, weight-averaged value — but conditions on
+<code>f["n_zones"]</code>, which <code>direction_features</code> fills from
+<code>best["n_zones"]</code>, the single aperture with the largest baseline×lin product:
+<strong>the quantity gated and the quantity deciding whether to gate come from different
+objects.</strong> And the guard reads <code>if n_zones ≥ 3 and lin < lin_gate</code>, so a
+two-zone aperture can never abstain — <code>lin</code> is 0.0 by construction at
+<em>n</em> = 2 and the gate is bypassed entirely, on precisely the series where common-mode
+rejection is structurally impossible. By (5) two-zone apertures arise only for <strong>odd</strong>
+<em>N</em>, so at the locked <em>N</em> = 8 the unguarded path is latent, not active; any move to
+an odd electrode count activates it.</p>
+
+<h4>9. Study 6: the gate working as designed, and the failure it cannot see</h4>
+
+<p>Study 6 (2160 trials) is the only place the gate's operating characteristic is visible. At
+full motion gradient 1.0:</p>
+
+<table class="mm-t">
+<tr><th>motion amplitude</th><th>raw accuracy</th><th>decided accuracy</th><th>abstain rate</th><th>accuracy bought</th></tr>
+<tr><td>0 cm</td><td>100.0%</td><td>100.0%</td><td>0.0%</td><td>—</td></tr>
+<tr><td>1 cm</td><td>91.7%</td><td>97.1%</td><td>5.6%</td><td>+5.4 pts</td></tr>
+<tr><td>2 cm</td><td>58.3%</td><td>84.0%</td><td>30.6%</td><td>+25.7 pts</td></tr>
+<tr><td>3 cm</td><td>47.2%</td><td>68.0%</td><td>30.6%</td><td>+20.8 pts</td></tr>
+</table>
+
+<p>This is the gate behaving as designed. <code>lin</code> is a coherence statistic, motion
+destroys the collinearity of arrival time against height, and abstention rises monotonically with
+motion — converting an accuracy collapse into a coverage loss. That is the safe direction of
+failure for a screening device: an abstention returns the child to the existing pathway, a
+confident wrong call does not. It is also the finding the study produced rather than the one it
+was designed to confirm, the gradient hypothesis having been refuted (false-retrograde
+15.8/12.8/14.4% at gradient 0/0.5/1.0, the full-gradient arm slightly better).</p>
+
+<p>Two limits. The trade above is a two-point operating characteristic: 0.35, and the discarded
+0.55 that cost 37.5% of genuine events. <strong>The yield-versus-accuracy curve has never been
+traced</strong> — the study grid varies motion and never the one constant governing the
+response to motion. Re-scoring stored trials over
+<code>lin_gate ∈ {0.15, …, 0.65}</code> needs no new forward solves.</p>
+
+<p>And the gate cannot see the failure that matters most. At zero motion the abstain rate is 0.0%
+while false-retrograde sits at 11.1%: an unexplained floor, every call emitted with full
+confidence. <strong><code>lin</code> is a coherence gate, not a correctness gate</strong> —
+a clean travelling wave whose estimated slope has the wrong sign passes perfectly, and nothing in
+<code>decide_direction</code> can detect that. Until the 11.1% is explained (leverage from a
+signal-free endpoint zone, §5, and boundary saturation of <code>max_lag</code>, §3b, are
+the testable candidates) the specificity ceiling of the method is set by an unidentified
+mechanism.</p>
+
+<h4>10. Assumed rather than tested, in this section</h4>
+
+<ul>
+<li><strong>Untested:</strong> that cross-correlation against a single reference zone is adequate
+(a matched filter from a forward-model template would be efficient and supply a calibrated gate);
+that unweighted OLS on <code>tarr</code> is adequate (<code>peaks[j]</code> is already computed
+and discarded, and would serve as an inverse-variance weight).</li>
+<li><strong>Never varied:</strong> the fusion exponents in (6), against the theory-derived (7)
+and a uniform-weight control; and <code>LIN_GATE</code>, which was additionally Youden-selected
+on the data it was reported on.</li>
+<li><strong>Known false:</strong> that per-zone noise is white and iid across zones. Mean removal
+and the shared reference both induce correlation, and no GLS accounts for either.</li>
+</ul>
+
+<p>None of these invalidate the sign. All say the same thing: a robust, deliberately conservative
+procedure operating some distance from its own bound, with the headroom between it and a properly
+derived estimator never measured.</p>

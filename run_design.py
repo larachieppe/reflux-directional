@@ -43,8 +43,17 @@ import directional_sim as ds
 import analyze_subjects as asub
 
 # ---- the locked design -----------------------------------------------------
+# SPAN, Z_CENTER and the output path are overridable from the environment so the
+# design can be re-characterised at a different placement WITHOUT disturbing the
+# published run. Defaults reproduce the original 16 cm mid-torso configuration
+# exactly. Study 5 showed that placement never detects 25-33% of refluxing
+# children and 43% of low-grade refluxers, so the design is being re-cut at the
+# 10 cm strip over the ureterovesical junction; both runs are kept so the report
+# can show the comparison rather than quietly swapping one for the other.
 N_STRIP = 8
-SPAN = 16.0
+SPAN = float(os.environ.get("DESIGN_SPAN", 16.0))
+Z_CENTER = float(os.environ.get("DESIGN_ZCENTER", 0.50))
+OUT = os.environ.get("DESIGN_OUT", "metrics_design.json")
 SNR = 60
 T = 20
 FREQ_KHZ = 50
@@ -70,7 +79,9 @@ def _init():
 
 def _world():
     if "w" not in _W:
-        _W["w"] = ds.StripWorld(N_STRIP, span=SPAN, mesh=_MESH)
+        # z_center was previously not forwarded here, so every locked-design run
+        # sat on the torso midpoint regardless of SPAN.
+        _W["w"] = ds.StripWorld(N_STRIP, span=SPAN, mesh=_MESH, z_center=Z_CENTER)
     return _W["w"]
 
 
@@ -170,7 +181,7 @@ def main():
             label = "reflux" if refluxer else "antegrade"
             jobs.append(("subject", SUBJ_MOTION, k, label, grade, side,
                          900_000 + c * 100 + k, c))
-    print(f"[design] {len(jobs)} trials  (N={N_STRIP}, span={SPAN} cm, SNR={SNR} dB)",
+    print(f"[design] {len(jobs)} trials  (N={N_STRIP}, span={SPAN} cm, z_center={Z_CENTER}, SNR={SNR} dB) -> {OUT}",
           flush=True)
 
     nproc = max(1, min(4, (os.cpu_count() or 4) - 2))
@@ -183,7 +194,8 @@ def main():
                 print(f"[design] {k+1}/{len(jobs)}  {el/60:.1f} min  "
                       f"eta {(el/(k+1)*(len(jobs)-k-1))/60:.1f} min", flush=True)
 
-    out = {"config": dict(n_strip=N_STRIP, span=SPAN, snr=SNR, T=T,
+    out = {"config": dict(n_strip=N_STRIP, span=SPAN, z_center=Z_CENTER,
+                          snr=SNR, T=T,
                           channels=2 * N_STRIP, motion=MOTION, n_op=N_OP,
                           n_grade=N_GRADE, n_subj=N_SUBJ, k_events=K_EVENTS,
                           subj_motion=SUBJ_MOTION, freq_khz=FREQ_KHZ,
@@ -282,14 +294,14 @@ def main():
     out["subject"] = sa
 
     out["runtime_min"] = (time.time() - t0) / 60.0
-    with open("metrics_design.json", "w") as f:
+    with open(OUT, "w") as f:
         json.dump(out, f)
     slim = [{k: r[k] for k in ("mode", "motion", "i", "label", "grade", "side",
                                "subj", "dir", "want", "strip", "ev", "lat_ok",
                                "lin", "m_ap")} for r in recs]
     with open("records_design.json", "w") as f:
         json.dump(slim, f)
-    print(f"[design] done in {out['runtime_min']:.1f} min -> metrics_design.json",
+    print(f"[design] done in {out['runtime_min']:.1f} min -> {OUT}",
           flush=True)
 
 

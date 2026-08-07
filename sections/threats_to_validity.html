@@ -1,0 +1,279 @@
+<h3>Threats to validity</h3>
+
+<p>Everything below is a reason to disbelieve a number in this report. The section is
+ordered from the threat that is structural and unfixable within a simulation, to the
+ones that are arithmetic and fixable in an afternoon. Two of them &mdash; the prevalence
+model and the base rate &mdash; change the interpretation of headline figures that are
+otherwise correctly computed.</p>
+
+<h4>1. Inverse crime: weaker here than usual, but not absent</h4>
+
+<p>Data are generated and analysed inside one forward model. In model-based EIT
+inversion this is the classic inverse crime: the reconstruction operator is built from
+the same discretised operator <code>K</code> that produced the data, so discretisation
+error cancels and reported image quality is unattainable on real measurements. That
+specific mechanism does not operate here, because the estimator never touches the
+forward operator. It consumes only the per-zone series and fits</p>
+
+<p>(1)&nbsp;&nbsp; t<sub>j</sub> = a + b&thinsp;z<sub>j</sub> &nbsp;over zones <em>j</em>,
+&nbsp;decision = sign(b + lag), &nbsp;gated on wave linearity &ge; <code>LIN_GATE</code></p>
+
+<p>where <code>z<sub>j</sub></code> is the axial centroid of the tetrapolar zone and
+<code>t<sub>j</sub></code> its arrival time. Nothing in <code>direction_features</code>,
+<code>xcorr_lag</code> or <code>decide_direction</code> references the mesh, the CEM
+coupling blocks or the admittivity field. So the estimator inherits none of the FEM's
+discretisation error, which is exactly why the mesh study found the decision invariant
+across all five meshes while |Z| itself did not converge.</p>
+
+<p>The residual bias is different and it is the serious one: <strong>the estimator's
+assumed response shape is guaranteed to match the simulated response shape.</strong>
+Equation (1) presumes each zone sees a single-peaked perturbation whose time of maximum
+tracks the bolus centroid past that zone. <code>bolus_path</code> produces precisely
+that, and says so &mdash; its docstring states that the bolus is a slug of essentially
+constant volume that <em>moves</em>, and that a rise/fall envelope was deliberately not
+imposed because an envelope makes the response separable as (amplitude per zone) &times;
+(one shared time course), and a separable response has no meaningful relative lag. That
+is a correct statement of physics and simultaneously an admission: the one modelling
+choice that would break the estimator was excluded from the simulator by design. Real
+ureteric peristalsis is a bolus that forms, propagates and is squeezed, i.e. partly
+separable. The fraction of a real per-zone signal that is separable envelope rather than
+travelling centroid is <em>the</em> unmeasured quantity in this project, and no run in
+the repository bounds it.</p>
+
+<div class="mm-warn">Reciprocity at 4.77e&minus;15 and slope convergence to 0.11% are
+internal-consistency checks. Neither is evidence against inverse crime: both would pass
+identically if the simulated response shape were physically wrong, because both compare
+the model to itself. The test that would bear on it is external &mdash; a flow phantom
+with a peristaltic pump, where the per-zone waveform is measured rather than assumed,
+and the separable fraction can be estimated by fitting a rank-1 (amplitude &times;
+envelope) model and reporting the residual.</div>
+
+<h4>2. Model error the forward solver cannot see</h4>
+
+<ul>
+<li><strong>Geometry.</strong> A right circular cylinder, <code>R</code> = 5.5 cm,
+height 20 cm, 6 rings, 17 layers. No spine, no psoas, no iliac crest, no ribs, no
+lordosis. The flank strips sit on a surface of constant curvature; a real flank is not
+one.</li>
+<li><strong>No bowel gas.</strong> <code>TISSUE</code> contains muscle, fat, kidney,
+bladder wall and urine. There is no air entry and <code>base_sigma</code> assigns none.
+Gas is a near-zero-conductivity inclusion that <em>moves on its own schedule</em> in the
+anterior and medial abdomen. It is the most obvious source of a spurious travelling
+perturbation with no relation to the ureter, and it is entirely absent. Study 6 tested
+body motion, which is a different confounder: motion displaces the whole conductivity
+field coherently, gas changes its topology locally.</li>
+<li><strong>Adiposity.</strong> Fat is present, as a shell at <code>r &gt; 0.82&thinsp;R</code>
+&mdash; a thickness of 0.18 &times; 5.5 = 0.99 cm in every simulated child, with no
+variation anywhere in the codebase. Since the strips are surface-mounted and the
+sensitivity of a tetrapolar pair falls steeply with depth, subcutaneous thickness is
+plausibly the single largest amplitude modulator in a real cohort, and it is held fixed.</li>
+<li><strong>Tissue values.</strong> Literature conductivities with a two-parameter
+dispersion, &sigma;(f) = &sigma;<sub>0</sub>(1 + 0.04&thinsp;log<sub>10</sub>(f/50&nbsp;kHz))
+and &epsilon;<sub>r</sub>(f) = &epsilon;<sub>r0</sub>(50&nbsp;kHz/f)<sup>0.10</sup>. This
+is a fit, not a Cole&ndash;Cole model, and pediatric tissue is not adult tissue. It
+matters more than usual because &omega;&epsilon;/&sigma; = 1.40 for kidney at 100 kHz:
+the permittivity term is load-bearing, so an error in &epsilon;<sub>r0</sub> is an error
+in the signal, not a rounding detail.</li>
+<li><strong>Urine conductivity is a constant.</strong> <code>TISSUE["urine"]</code> =
+1.70 S/m, identical in every trial. Real urine spans roughly 0.5&ndash;3 S/m with
+hydration and osmolality, and a child undergoing a voiding study is deliberately
+hydrated, i.e. at the dilute end. The bolus signal scales with the urine&ndash;muscle
+contrast, 1.70 &minus; 0.34 = 1.36 S/m as modelled; at 0.8 S/m urine the contrast falls
+to 0.46 S/m, a factor of ~3 in perturbation amplitude. Study 6 showed the failure mode
+is amplitude-driven and safe (abstention rises), so the expected consequence is a higher
+abstain rate rather than a wrong sign &mdash; but that is an inference from a different
+experiment, not a measurement. A one-line sweep of <code>TISSUE["urine"]</code> over
+0.6&ndash;2.5 S/m would settle it and has not been run.</li>
+</ul>
+
+<h4>3. What the word "cohort" can and cannot mean here</h4>
+
+<p>This is the item most likely to be over-read by a reader skimming for results.
+<code>draw_anatomy(world, rng)</code> returns exactly six quantities, and inspection of
+them is decisive:</p>
+
+<table class="mm-t">
+<tr><th>Key</th><th>What it draws</th><th>Varies?</th></tr>
+<tr><td><code>ur_x</code></td><td>ureter lateral offset &times; U(0.92, 1.08)</td><td>position</td></tr>
+<tr><td><code>k_off</code>, <code>z_kidney</code></td><td>kidney centre, N(0, 0.04R) and N(0, 0.03H)</td><td>position</td></tr>
+<tr><td><code>bladder</code></td><td>bladder centre, N(0, 0.05R) / N(0, 0.03H)</td><td>position</td></tr>
+<tr><td><code>k_r</code></td><td>(0.20R, 0.26R, 0.11H)</td><td><strong>fixed</strong></td></tr>
+<tr><td><code>b_r</code></td><td>[0.30R, 0.30R, 0.12H]</td><td><strong>fixed</strong></td></tr>
+</table>
+
+<p>Every organ <em>size</em> is a fixed multiple of <code>R</code> and <code>H</code>,
+and <code>R</code> = 5.5 cm and <code>H</code> = 20 cm are constants of the run.
+<code>xscale</code>, the one knob that could make the torso elliptical, defaults to 1.0
+and is never set otherwise. So: torso radius, torso height, torso cross-section, fat
+thickness, kidney size, bladder size and every tissue conductivity including urine are
+<strong>identical across all 48 "simulated children."</strong></p>
+
+<p>The 48 children are 48 draws of organ <em>position</em> inside one fixed body. That is
+a legitimate and useful ensemble &mdash; positional uncertainty is exactly what a
+placement study needs to marginalise over &mdash; but it means "cohort" here denotes a
+positional-jitter ensemble and nothing else. No result in this repository supports any
+statement about body habitus, age range, BMI, or scaling from infant to adolescent. In
+particular the Study 5 recommendation mixes parameterisations: the span is absolute
+(<code>10.0</code> cm) while the centre is fractional (<code>z_center = 0.34</code>). On a
+torso half as long, a 10 cm strip covers twice the fractional height, and nothing here
+tests which of the two conventions transfers. The honest version of the recommendation is
+"10 cm at z = 0.34 on a 20 cm torso"; whether it generalises is an open question requiring
+a torso-size sweep that the code already supports (<code>R</code>, <code>height</code> and
+<code>xscale</code> are constructor arguments) and that has not been run.</p>
+
+<h4>4. Thresholds selected on the data they are reported on</h4>
+
+<p>There is no train/test split anywhere in this project. Two selections are made on the
+evaluation set:</p>
+<ul>
+<li><code>LIN_GATE = 0.35</code> is a single hand-set module-level constant. Its docstring
+records a Youden justification from measured <code>lin</code> distributions at 0.45 cm
+motion (events median ~0.95, empty windows ~0.12&ndash;0.25; keeps 96.4% of events,
+rejects 71.4% of empties), which is a real calibration and a large improvement on the
+earlier hand-picked 0.55. But it is <em>never swept</em> anywhere in the repository, so
+no sensitivity of any reported figure to this constant exists. Every abstain rate quoted
+&mdash; 5.6% at 1 cm motion, 30.6% at 2&ndash;3 cm &mdash; is a function of one untuned
+number.</li>
+<li><code>best_k</code> in <code>subject_analysis</code> is chosen as
+<code>argmax<sub>k</sub></code> of Youden's J over the six candidate rules
+(flag if &ge; k of K = 6 events read retrograde), and <code>best_sens</code> /
+<code>best_spec</code> are then reported <em>at that k</em>, on the same 24 refluxing and
+24 healthy children that chose it. With six candidates and n = 24 per arm, the winner's
+J is upward-biased by selection. Evidence that this is not hypothetical: the chosen k
+moves across cells &mdash; 3, 3, 4, 4 for the 10 cm arm at &sigma; = 0/0.5/1/2 cm, and 1,
+1, 1, 1 for the 16 cm arm &mdash; which is a threshold tracking noise as much as signal.
+The fix is standard: pre-register a rule (a simple majority, k &ge; 4) or select k on a
+disjoint set of children and report on the rest.</li>
+</ul>
+
+<h4>5. A prevalence model that is published but never called</h4>
+
+<p><code>GRADE_WEIGHTS = {1: 0.30, 2: 0.30, 3: 0.22, 4: 0.13, 5: 0.05}</code> is defined
+at <code>directional_sim.py:51</code> and rendered into the methods table by
+<code>build_methods.py:76</code> as the project's grade model. <code>sample_grade(rng)</code>
+is defined at <code>directional_sim.py:62</code> and, by exhaustive grep, <strong>called
+from nowhere.</strong> What <code>run_precision.py</code> actually does is</p>
+
+<p><code>grade = int(np.random.default_rng(870_000 + c).choice([1, 2, 3, 4, 5]))</code></p>
+
+<p>&mdash; uniform. So the realised mix is 40% grade IV&ndash;V against the declared 18%,
+and 40% grade I&ndash;II against a declared 60%.</p>
+
+<p>Grade is not cosmetic in this model. <code>GRADE_TABLE</code> maps grade to
+(bolus semi-axis fraction of R, retrograde reach fraction of the ureter): 0.10&nbsp;R and
+0.20 at grade I, 0.30&nbsp;R and 1.00 at grade V. Semi-axis 0.10&nbsp;R &rarr; 0.30&nbsp;R
+is a 27-fold volume ratio, and reach 0.20 &rarr; 1.00 determines how many zone centroids
+the bolus crosses, hence how many points equation (1) has to fit. Both are monotone in
+grade and both make detection easier.</p>
+
+<p><strong>Which figures this biases, and how.</strong> Optimistically, all of Study 5's
+detection figures: <code>per_event_sens</code> (0.806 / 0.743 / 0.681 / 0.632 across
+&sigma; for the 10 cm arm), <code>best_sens</code>, and <code>never_detected</code>
+(0/0/4.2/8.3%). Under the declared weights the same per-grade rates would give a lower
+sensitivity and a higher never-detected rate, because the easy tail is over-represented
+by 22 percentage points. Less obviously, specificity is affected too:
+<code>bolus_path</code> uses <code>GRADE_TABLE[grade]</code> to size the bolus for
+<em>antegrade</em> trials as well as refluxing ones, so healthy children also get an
+unrealistically large mean bolus, giving cleaner true-negative calls &mdash; so
+<code>best_spec</code> (0.833 / 0.750 / 0.792 / 0.750) is optimistic as well.
+<code>low_grade_never</code> is the exception: it conditions on grade &le; 2 and is
+therefore unbiased by the mix, which is fortunate, since it is the metric the placement
+conclusion rests on.</p>
+
+<div class="mm-warn">The re-weighted sensitivity cannot be recovered post hoc.
+<code>metrics_precision.json</code> stores only the aggregated grid, and the per-record
+checkpoint <code>metrics_precision.partial.jsonl</code> was not retained, so the per-grade
+breakdown no longer exists on disk. Correcting this needs a rerun with
+<code>sample_grade</code> actually called (or per-record grades persisted and the average
+re-weighted), not a recomputation.</div>
+
+<h4>6. The base rate problem</h4>
+
+<p>Every headline figure in this project is computed on a cohort that is 24 refluxing and
+24 healthy children &mdash; 50% prevalence, a design choice, not epidemiology. Screening
+performance is governed by</p>
+
+<p>(2)&nbsp;&nbsp; PPV = (Se&thinsp;&pi;) / (Se&thinsp;&pi; + (1 &minus; Sp)(1 &minus; &pi;))</p>
+
+<p>Take the most operationally realistic Study 5 cell &mdash; 10 cm at z = 0.34 with
+&sigma; = 1 cm of placement error, k &ge; 4 of 6 &mdash; where Se = 0.708 and Sp = 0.792:</p>
+
+<table class="mm-t">
+<tr><th>Prevalence &pi;</th><th>Setting</th><th>PPV</th><th>NPV</th></tr>
+<tr><td>50%</td><td>this simulation's own cohort</td><td>77.3%</td><td>73.1%</td></tr>
+<tr><td>30%</td><td>after a first febrile UTI</td><td>59.3%</td><td>86.4%</td></tr>
+<tr><td>1%</td><td>general pediatric screening</td><td><strong>3.3%</strong></td><td>99.6%</td></tr>
+</table>
+
+<p>Concretely, per 1000 children screened at &pi; = 1%: 10 refluxers, of whom 7 are
+flagged and 3 missed; 990 healthy, of whom 206 are flagged. 213 children go on to
+confirmatory VCUG to find 7 cases, i.e.</p>
+
+<p>(3)&nbsp;&nbsp; VCUGs per true case = (Se&thinsp;&pi; + (1 &minus; Sp)(1 &minus; &pi;)) /
+(Se&thinsp;&pi;) = 30.1</p>
+
+<p>In a project whose entire clinical premise is avoiding catheterisation and radiation,
+a general-population screening deployment would order thirty catheterised studies per
+case found. At &pi; = 30% the same device orders 358 VCUGs per 1000 instead of 1000, a
+64% reduction, at the cost of missing 88 of 300 refluxers &mdash; a trade that is at
+least arguable against a reference standard that itself misses ~20% of reflux and whose
+graders agree only 59% of the time. The post-febrile-UTI population is the only setting
+these numbers support.</p>
+
+<p>The corollary a device engineer should take from (2): <strong>specificity, not
+sensitivity, is the binding constraint.</strong> Holding Se = 0.708, reaching even a
+30% PPV at &pi; = 1% requires Sp = 98.3%, against the 79.2% measured. That is a 26-fold
+reduction in false-positive rate, not an increment. And the unexplained 11.1%
+false-retrograde floor at <em>zero</em> motion in Study 6 sits directly on this
+constraint: it caps specificity from below by a mechanism nobody in this project has yet
+identified.</p>
+
+<h4>7. Small cells, wide intervals, and a shape that should not be read</h4>
+
+<p>Study 5 is 2304 trials but only 48 children per cell, 24 per arm, and the low-grade
+subset is 14 children. Wilson 95% intervals on the numbers the placement conclusion rests
+on:</p>
+
+<table class="mm-t">
+<tr><th>Quantity (cell)</th><th>Point</th><th>Count</th><th>95% CI</th></tr>
+<tr><td>Sensitivity, 10 cm, &sigma;=1</td><td>70.8%</td><td>17/24</td><td>50.8&ndash;85.1%</td></tr>
+<tr><td>Specificity, 10 cm, &sigma;=1</td><td>79.2%</td><td>19/24</td><td>59.5&ndash;90.8%</td></tr>
+<tr><td>Low-grade never-detected, 10 cm, &sigma;=0</td><td>0%</td><td>0/14</td><td>0&ndash;21.5%</td></tr>
+<tr><td>Low-grade never-detected, 16 cm, &sigma;=0</td><td>42.9%</td><td>6/14</td><td>21.4&ndash;67.4%</td></tr>
+</table>
+
+<p>The two low-grade intervals abut at 21.4/21.5%: on any single cell the difference is at
+the very edge of conventional significance. What carries the finding is that the gap
+persists in all four &sigma; cells and in both metrics. That is not four independent
+replications, however. The seeds make it a <em>paired</em> design:
+<code>rng(870_000 + c)</code> fixes each child's grade and <code>c % 2</code> fixes
+refluxer status, both independent of span and &sigma;, and
+<code>rng(880_000 + child).normal(0, sigma)</code> draws the misplacement from the same
+standard normal scaled by &sigma;. So child <em>c</em> has the same grade, the same
+diagnosis and the same normalised misplacement in every cell of the grid. Pairing is a
+genuine variance reduction for the 10-vs-16 cm contrast &mdash; it removes between-child
+grade variance from the comparison &mdash; but it also means the four &sigma; cells share
+their entire child-level randomness, so the non-monotonicity of the 16 cm arm
+(25 &rarr; 33 &rarr; 12 &rarr; 17% never-detected) is one realisation of the same 24
+children re-scored, not four independent measurements of a trend.</p>
+
+<div class="mm-warn">Accordingly the defensible claim is the <em>persistent gap</em>
+between arms, not the shape of either curve in &sigma;, and certainly not any
+interpolation such as "there is an optimum near &sigma; = 1 cm." Resolving the shape needs
+independent child draws per &sigma; and n on the order of 200 per cell; at the current
+per-trial cost that is a scheduling decision, not a research problem.</div>
+
+<h4>Standing limitations that no run addresses</h4>
+
+<p>The SNR budget is assumed, not measured from hardware. The tissue values are from the
+literature. The geometry is a cylinder. And there is <strong>no phantom data and no
+patient data of any kind</strong> &mdash; every number in this report is a property of a
+program.</p>
+
+<p><strong>The sentence to take away:</strong> this work establishes that a directional
+estimator is internally consistent, mesh-independent in its decision, robust to non-rigid
+motion in a fail-safe way, and sensitive to strip placement in a way that overturns the
+project's own locked design &mdash; and it establishes none of that about a child, because
+the "cohort" is one body with jittered organs, the grade mix is 22 points easier than
+declared, and at realistic screening prevalence the measured operating point yields a
+3.3% positive predictive value.</p>

@@ -9,6 +9,7 @@ current figures.
 import base64, json, os
 
 import build_methods as bm
+import build_technical as bt
 
 D = json.load(open("metrics_design.json"))
 E = json.load(open("metrics_directional.json"))
@@ -76,7 +77,7 @@ rows_k = "\n".join(
 pk = sorted(PG, key=lambda k: -(PG[k]["g1_m0.0"]["reflux_acc"]
                                 if PG[k]["g1_m0.0"]["reflux_acc"] == PG[k]["g1_m0.0"]["reflux_acc"] else 0))
 rows_place = "\n".join(
-    f"<tr{' class=hi' if k == '10_0.34' else (' class=bad' if k == '16_0.50' else '')}>"
+    f"<tr{' class=hi' if k == '10_0.28' else (' class=bad' if k == '16_0.50' else '')}>"
     f"<td>{PG[k]['span']:.0f} cm @ z={PG[k]['z_center']:.2f}</td>"
     f"<td>{PG[k]['g1_m0.0']['zones_crossed']}</td>"
     + "".join(f"<td>{p0(PG[k][f'g{g}_m0.0']['reflux_acc'])}</td>" for g in (1,2,3,4,5))
@@ -106,6 +107,7 @@ DEFECTS = [
  ("z_center never forwarded","physics","StripWorld accepted it but never passed it to place_strips.","Every strip in every study sat on the torso midpoint by default. Caused the 'grades I-II are undetectable' claim."),
  ("Electrodes sharing boundary facets","physics","A fixed z window exceeded half-pitch at N=12.","44 shared facets welded electrodes together; that array was not physically realizable."),
  ("Noise added to a normalized quantity","model","Derived from raw |Z| but added to fractional dZ.","Injected noise depended on the choice of length unit and sat ~10 dB low."),
+ ("Placement chosen on the still arm only","stats","run_placement scored candidate placements by low-grade accuracy at motion 0.0, silently discarding the motion arm the same study had just measured.","Selected 10 cm @ z=0.34 (92.9%/100% still, but 50.0% on grade I under motion) over 10 cm @ z=0.28 (equal still, 78.6% under motion). That choice propagated into Study 4, which centred its offsets on it, and Study 5, which adopted it as the short-strip arm."),
  ("Abstention scored as a wrong answer","stats","dir_acc penalised abstention, but the abstain gate needs >=3 zones, so N=5 was structurally exempt from it.","Made N=5 appear to beat N=8 under motion (79% vs 71%). On calls actually made, N=8 leads 93% to 79%. Same failure mode as defect 9: a pooled metric flattering the wrong option."),
 ]
 rows_def = "\n".join(
@@ -182,7 +184,9 @@ HTML = f"""<!doctype html>
  .note{{border-left:4px solid #c98500;padding:10px 14px;background:#fbf7ef;margin:14px 0}}
  img{{max-width:100%;border:1px solid #ddd}} .sub{{color:#555;font-size:10pt}}
 {bm.CSS}
+{bt.CSS}
  .methods table.mm-t th,.methods table.mm-t td{{text-align:left}}
+ .techsec table.mm-t th,.techsec table.mm-t td{{text-align:left;border:1px solid #d7e0e4}}
 </style></head><body>
 
 <h1>Directional bioimpedance sensing for pediatric vesicoureteral reflux</h1>
@@ -200,15 +204,21 @@ Section 2 gives the shared forward model, the estimator, and the statistics, so 
 below can be read as a statement of what it changed rather than a self-contained method.
 <b>Fifteen defects were found and fixed along the way, and five published headline claims were
 subsequently overturned by measurement</b> &mdash; most recently the locked design itself
-(&sect;8) and the project's own stated existential risk (&sect;9). That history is reported here
+(&sect;9) and the project's own stated existential risk (&sect;10). That history is reported here
 alongside the results, because it bears directly on how much weight the numbers can carry.</div>
 <div class="warn"><b>Read this before quoting any number.</b> The design characterised in
-&sect;4 as "the locked design" is a 16 cm strip at mid-torso. Study 5 (&sect;8) has since shown
+&sect;5 as "the locked design" is a 16 cm strip at mid-torso. Study 5 (&sect;9) has since shown
 that placement never detects 25&ndash;33% of refluxing children across six voids, and 43% of
-low-grade refluxers even when placed perfectly. <b>The locked design should be re-cut to the
-10 cm strip over the ureterovesical junction</b>, and &sect;4 has not yet been re-run at that
-placement. Sections 4 and 8 therefore disagree, deliberately, and section 8 is the newer
-evidence.</div>
+low-grade refluxers even when placed perfectly. That much is settled across two independent
+studies.<br><br>
+<b>What replaces it is not yet settled.</b> A short 10 cm strip over the ureterovesical junction
+recovers the low grades, but it has a shorter axial lever arm, and re-characterising the whole
+design there cost AUC at <i>every</i> motion level (0.961&rarr;0.883 still, 0.893&rarr;0.665 at
+0.9 cm). Placement is a genuine trade-off between low-grade coverage and motion robustness, not a
+strictly better choice &mdash; and the geometry forbids having both, since a 16 cm strip in a
+20 cm torso cannot be centred below z = 0.40. Two better-balanced candidates are being
+characterised now. Until they land, <b>&sect;5 reports a placement known to be wrong for low
+grades, and no re-cut design has yet been validated to replace it.</b></div>
 
 <h2>1. Premise</h2>
 <p>The reference test, VCUG, requires catheterization, radiation, and voiding on command. It also
@@ -233,7 +243,10 @@ parameters are introspected from the model module and from the metrics file each
 wrote, so they cannot drift from the code that produced the results.</p>
 {bm.common_html()}
 
-<h2>3. Study 1: how many electrodes</h2>
+<h2>3. Technical foundations</h2>
+{bt.technical_html()}
+
+<h2>4. Study 1: how many electrodes</h2>
 <p>Direction accuracy at grade &ge; III. Two accuracy columns are shown at 0.6 cm because a
 single one is misleading: the raw figure counts an <b>abstention</b> as a wrong answer, while the
 abstain gate requires at least three zones, so N=5 (two zones) is <b>structurally exempt</b> from
@@ -259,13 +272,13 @@ N &ge; 8. Replacing selection with fusion across apertures reversed the result: 
 
 {bm.methods_html("electrode-count")}
 
-<h2>4. Study 2: the locked design</h2>
+<h2>5. Study 2: the locked design</h2>
 <p>{C['n_strip']} electrodes per strip, {C['span']:.0f} cm span, {C['channels']} channels,
 {C['snr']} dB, {C['freq_khz']} kHz.</p>
 <table><tr><th>Motion</th><th>Direction (old &rarr; new)</th><th>Laterality</th><th>AUC</th><th>Abstain</th></tr>
 {rows_design}</table>
 {img("figs_design/d2_motion.png","Performance against motion at the locked design.")}
-<h3>3.1 The multi-event screening rule</h3>
+<h3>5.1 The multi-event screening rule</h3>
 <p>VCUG captures one or two forced voids. A passive wearable observes many, and detection compounds.
 Simulated as {S['n_reflux']+S['n_healthy']} children with {K} events each, <b>anatomy and placement
 held fixed per child</b> so correlated failure would show rather than average away. Per event:
@@ -280,7 +293,7 @@ appeared to beat VCUG.</div>
 
 {bm.methods_html("design")}
 
-<h2>5. Study 3: where the strip sits</h2>
+<h2>6. Study 3: where the strip sits</h2>
 <p>Low-grade reflux only traverses the lower ureter, so what matters is how many tetrapolar zone
 centroids its bolus actually crosses. Reflux-only detection, still:</p>
 <table><tr><th>Placement</th><th>Zones crossed (grade I)</th><th>I</th><th>II</th><th>III</th><th>IV</th><th>V</th></tr>
@@ -298,7 +311,7 @@ coverage of the lower ureter.</div>
 
 {bm.methods_html("placement")}
 
-<h2>6. Study 4: misplacement tolerance</h2>
+<h2>7. Study 4: misplacement tolerance</h2>
 <p>The optimum is only useful if it survives imperfect placement by a parent, against a landmark
 that is not externally visible. Reflux-only detection, still, offsetting the
 {T['config']['span'] if T else 10:.0f} cm strip along the body axis:</p>
@@ -315,12 +328,12 @@ accuracy.</div>
 
 {bm.methods_html("tolerance")}
 
-<h2>7. Verification of the forward model</h2>
+<h2>8. Verification of the forward model</h2>
 <p>Everything above rests on the forward solve being correct, and until now that had been
 <i>asserted</i> rather than demonstrated. Four checks were run. They need no patient data and no
 new physics, and they are the first thing a numerical analyst asks for.</p>
 
-<h3>7.1 Reciprocity: passes at machine precision, and what that is worth</h3>
+<h3>8.1 Reciprocity: passes at machine precision, and what that is worth</h3>
 <p>Maxwell reciprocity requires the transfer impedance to be unchanged when the drive pair and the
 sense pair are exchanged. Exchanging them exercises different rows of the assembled system, so an
 asymmetry in the assembly, the contact-impedance Robin term or the gauge condition shows up at
@@ -343,7 +356,7 @@ a wrong electrode area, a mis-meshed geometry, a wrong tissue value &mdash; pass
 untouched. This report previously called it an assumption-free validation of the forward operator.
 It is not, and the difference matters.</p>
 
-<h3>7.2 Mesh convergence: the impedance does not converge, but the decision does</h3>
+<h3>8.2 Mesh convergence: the impedance does not converge, but the decision does</h3>
 <p>An identical, deterministic, <b>noiseless</b> trial solved on five meshes spanning an eightfold
 range of node count.</p>
 <table><tr><th>rings / layers</th><th>nodes</th><th>tets</th><th>mean |Z|</th><th>|Z| error</th>
@@ -365,7 +378,7 @@ supported by this model &mdash; including any figure quoted to size hardware. On
 timing claims survive. The headline result is a slope sign, so it is on the right side of that
 line, but the limitation is real and is not narrowed by running more trials.</div>
 
-<h3>7.3 Contact-impedance immunity is 4.3&times;, not "largely eliminated"</h3>
+<h3>8.3 Contact-impedance immunity is 4.3&times;, not "largely eliminated"</h3>
 <p>Sweeping contact impedance across the modelled range and comparing the tetrapolar transfer
 impedance against a bipolar proxy on the <i>same electrodes and the same solves</i>:</p>
 <table><tr><th>measurement</th><th>relative spread over z<sub>0</sub> &isin; U(5,20)</th></tr>
@@ -379,7 +392,7 @@ geometry remains the right choice &mdash; four times is a large gain and the alt
 four times worse &mdash; but the language was wrong and the residual has to be budgeted for in
 hardware.</div>
 
-<h3>7.4 Quasi-statics: valid, but permittivity is not negligible</h3>
+<h3>8.4 Quasi-statics: valid, but permittivity is not negligible</h3>
 <p>Two <i>independent</i> conditions must hold to reduce Maxwell to
 <code>&nabla;&middot;(&kappa;&nabla;u) = 0</code>: the domain must be electrically small against
 the <b>free-space</b> wavelength (here 6.7&times;10<sup>&minus;5</sup>), and the skin depth must
@@ -397,7 +410,7 @@ good conductor &lambda; = 2&pi;&delta;, so it merely restates the skin-depth tes
 answers the separate question of whether permittivity may be dropped.</div>
 {bm.methods_html("verify")}
 
-<h2>8. Study 5: placement precision, and the design this overturns</h2>
+<h2>9. Study 5: placement precision, and the design this overturns</h2>
 <p>48 simulated children per cell, six voids each, with <b>one placement error drawn per child and
 shared across all of that child's voids</b> &mdash; a strip is applied once, not re-applied per
 void. That is what makes failure correlated within a child, which is the entire question. Had the
@@ -411,14 +424,28 @@ design of a <b>16 cm strip at z = 0.50</b>, and Study 2 characterises that confi
 shows it never detects <b>25% of refluxing children on any of six voids at perfect placement</b>,
 rising to 33% with realistic placement error, and misses <b>43% of low-grade refluxers even when
 placed perfectly</b>. The 10 cm strip over the ureterovesical junction misses <b>0%</b> at perfect
-placement and 8% at 2 cm of error. The published locked design is the wrong one.</div>
+placement and 8% at 2 cm of error. <b>The published locked design is wrong for low grades.</b></div>
+<div class="note"><b>But the short strip is not simply the answer</b>, and an earlier version of
+this section said it was. Re-characterising the full design at 10 cm @ z = 0.34 recovered grade II
+(55.4% &rarr; 83.9% still) and cost accuracy everywhere else, with AUC falling at every motion
+level and the gap widening as motion grows: 0.961&rarr;0.883 still, 0.954&rarr;0.836 at 0.45 cm,
+0.893&rarr;0.665 at 0.9 cm. The mechanism is the same lever-arm argument that explains the
+electrode-count result (&sect;3.6): slope precision scales with the axial spread of the zone
+centroids, and a 10 cm strip has 62% of the lever arm of a 16 cm one, so its slope estimate is
+noisier and degrades faster under motion.<br><br>
+The two studies are not in conflict &mdash; they measure different things. Study 2 measures the
+<i>marginal</i> per-event rate with fresh anatomy each trial. Study 5 holds anatomy and placement
+fixed per child, so it measures <i>correlated</i> failure: whether a given child is ever detectable
+at all. A placement can have the better average per-event accuracy while completely failing a
+subset of children, and only the second metric sees that. Both are real, and the design has to
+satisfy both.</div>
 {img("figs_new/n2_precision.png","Study 5. The published 16 cm mid-torso placement loses a quarter of all refluxing children and 43% of low-grade refluxers even when placed perfectly. The 10 cm strip over the ureterovesical junction misses none.")}
 <p>This is the same lesson as Study 3, arriving a second time by a different route: low-grade
 reflux is a <b>placement</b> problem. A long mid-torso strip spreads its zones over anatomy where
 the low-grade bolus never travels, and no amount of repeat observation recovers a child whose
 strip never covered the relevant segment. Repeat voids only help when failure is independent
 across voids, and placement failure is precisely the kind that is not.</p>
-<h3>8.1 The most likely artifact, tested and ruled out</h3>
+<h3>9.1 The most likely artifact, tested and ruled out</h3>
 <p>A result this load-bearing deserves an attempt to break it. The most plausible way "10 cm beats
 16 cm" could be an <i>estimator</i> artifact rather than physics is lag-window saturation:
 <code>xcorr_lag</code> clips the inter-zone lag search at <code>max_lag = 2T/3</code>. If true lags
@@ -444,14 +471,14 @@ between the two placements is large and consistent across every &sigma;, and tha
 The individual sensitivity figures are not precise enough to rank.</div>
 {bm.methods_html("precision")}
 
-<h2>9. Study 6: non-rigid respiratory motion &mdash; the predicted failure did not happen</h2>
+<h2>10. Study 6: non-rigid respiratory motion &mdash; the predicted failure did not happen</h2>
 <p>Every motion result before this one used a <b>rigid</b> translation, which is exactly the
 perturbation that subtracting the across-zone mean provably nulls. A rigid-only model can only ever
 <i>confirm</i> the common-mode rejection claim; it cannot test it. This report previously named
 non-rigid motion the single most likely place the model flatters the design, on the argument that a
 craniocaudal gradient survives mean subtraction and injects a phase-locked false travelling wave
 &mdash; the exact shape of the failure that took the prior tomographic program from 73% to 44%.</p>
-<h3>9.1 The gradient hypothesis, tested</h3>
+<h3>10.1 The gradient hypothesis, tested</h3>
 <table><tr><th>Displacement</th><th>rigid (grad 0)</th><th>half gradient</th><th>full gradient</th></tr>
 {rows_m2fr}</table>
 <p class="cap">False-retrograde rate on non-travelling windows: how often the device invents reflux
@@ -469,7 +496,7 @@ signature, or that the induced slope is simply small against the bolus-induced s
 amplitudes &mdash; are <b>post hoc and untested</b>. The honest statement is that the mechanism was
 predicted, the prediction was wrong, and why it was wrong is not yet established.</p>
 
-<h3>9.2 What actually degrades the measurement</h3>
+<h3>10.2 What actually degrades the measurement</h3>
 <table><tr><th rowspan="2">Displacement</th><th colspan="3">rigid</th><th colspan="3">half gradient</th>
 <th colspan="3">full gradient</th></tr>
 <tr><th>raw</th><th>on calls</th><th>abstain</th><th>raw</th><th>on calls</th><th>abstain</th>
@@ -491,7 +518,7 @@ bladder-filling confounder leaking into the slope. It is a floor on achievable s
 has not been chased down.</div>
 {bm.methods_html("motion2")}
 
-<h2>10. Defect log</h2>
+<h2>11. Defect log</h2>
 <p>Fourteen defects were found and corrected. Six by debugging when the detector sat at chance
 despite correct forward physics, five by independent adversarial review of the code, and three by
 a later audit. Several fixes introduced new defects, which is itself part of the record.</p>
@@ -504,7 +531,7 @@ measuring a threshold distribution instead of choosing a plausible number, readi
 vector actually contained instead of trusting the function's return value. Simulation results here
 should be treated as hypotheses for a phantom to test, not as measurements.</div>
 
-<h2>11. What survived, what did not</h2>
+<h2>12. What survived, what did not</h2>
 <table><tr><th>Claim</th><th>Status</th></tr>
 <tr class="bad"><td>More electrodes make direction accuracy worse</td><td><b>Overturned.</b> Artifact of greedy aperture selection.</td></tr>
 <tr class="bad"><td>Span is the dominant lever; longer is better</td><td><b>Overturned.</b> Span was a proxy for placement; a shorter well-placed strip wins.</td></tr>
@@ -515,7 +542,7 @@ should be treated as hypotheses for a phantom to test, not as measurements.</div
 <tr class="hi"><td>Multi-event capture beats single-void VCUG</td><td>Holds, now on separated sensitivity and specificity with the chance floor shown.</td></tr>
 </table>
 
-<h2>12. Open risks</h2>
+<h2>13. Open risks</h2>
 <ol>
 <li><b>Placement precision is the binding constraint</b>, and Study 5 has now confirmed it twice
 over. &plusmn;1 cm on a landmark that is not externally visible, on a child who will not hold
@@ -524,17 +551,17 @@ published locked design.</li>
 <li><b>No physical data.</b> No phantom, animal or clinical measurement stands behind any number
 here. This is a feasibility envelope, not clinical performance.</li>
 <li><b>Motion above about 1 cm.</b> Non-rigid motion turned out <i>not</i> to be the threat
-(&sect;9), but displacement amplitude is: beyond 2 cm the device spends a third of its time
+(&sect;10), but displacement amplitude is: beyond 2 cm the device spends a third of its time
 abstaining. The residual question is how often a real child exceeds that during a void.</li>
 <li><b>An unexplained {_pct(M2['grid']['a0.0_g0.0']['false_retrograde'],1)} false-retrograde floor
 at zero motion</b>, which caps achievable specificity and has no identified cause.</li>
-<li><b>Absolute impedance magnitudes are not mesh-converged</b> (&sect;7.2). Any hardware sizing
+<li><b>Absolute impedance magnitudes are not mesh-converged</b> (&sect;8.2). Any hardware sizing
 taken from this model inherits that, and more trials will not fix it &mdash; only a finer mesh or a
 convergence-corrected estimate will.</li>
 <li><b>Contact impedance is rejected only 4.3&times;</b>, not eliminated, leaving 16% residual
 sensitivity to budget for.</li>
 <li><b>Single excitation frequency in the estimator.</b> Two are solved but frequency is never used
-discriminatively &mdash; and &sect;7.4 shows the imaginary part carries real information, so this is
+discriminatively &mdash; and &sect;8.4 shows the imaginary part carries real information, so this is
 a missed lever rather than a neutral omission.</li>
 <li><b>Bilateral reflux is structurally unreportable</b>: the estimator selects one strip, so it
 cannot express "both sides", which is a stated clinical requirement.</li>

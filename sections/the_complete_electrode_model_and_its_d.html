@@ -1,0 +1,133 @@
+<h3>The Complete Electrode Model and its discretisation</h3>
+
+<p>Every number in this report is a functional of one object: the discrete forward map from an admittivity field to a set of tetrapolar transfer impedances. This section states that map, describes how <code>eit3d.py</code> realises it, and reports the mesh-convergence result, which does not converge in the quantity most readers would check first, for a reason that is instructive rather than fatal.</p>
+
+<h4>The boundary value problem</h4>
+
+<p>Let Ω ⊂ ℝ<sup>3</sup> be the torso segment, ∂Ω its boundary, and E<sub>1</sub>…E<sub>L</sub> ⊂ ∂Ω the disjoint electrode patches. The admittivity σ(x) = σ'(x) + iωε(x) is complex and element-wise constant. Under the electro-quasi-static approximation (justified separately: skin-depth/L = 6–54, L/λ<sub>0</sub> = 6.7×10<sup>−5</sup>) the potential u satisfies</p>
+
+<p>(1)  ∇·(σ∇u) = 0 in Ω</p>
+<p>(2)  u + z<sub>l</sub> σ ∂u/∂n = U<sub>l</sub> on E<sub>l</sub>, l = 1…L</p>
+<p>(3)  σ ∂u/∂n = 0 on ∂Ω \ ⋃E<sub>l</sub></p>
+<p>(4)  ∫<sub>E<sub>l</sub></sub> σ ∂u/∂n dS = I<sub>l</sub></p>
+
+<p>subject to charge conservation and a gauge:</p>
+
+<p>(5)  Σ<sub>l</sub> I<sub>l</sub> = 0,  Σ<sub>l</sub> U<sub>l</sub> = 0</p>
+
+<p>These are exactly the equations in the <code>eit3d.py</code> module docstring. Three features distinguish this from simpler electrode models: the Robin condition (2) carries the contact impedance z<sub>l</sub> (Ω·cm<sup>2</sup>); U<sub>l</sub> being one constant over the whole patch enforces metallic <em>shunting</em>; and (4) constrains the <em>integral</em> current, not a pointwise flux, so current density redistributes freely and piles up at electrode edges. A point model has none of these, a shunt model sets z<sub>l</sub> = 0, a gap model drops the shunt. Only the CEM represents a finite z<sub>l</sub>.</p>
+
+<p><strong>Existence and uniqueness.</strong> Work in the quotient space H = (H<sup>1</sup>(Ω) ⊕ ℂ<sup>L</sup>)/ℂ, where the quotient removes the additive constant fixed by the gauge in (5). For real σ ≥ σ<sub>min</sub> > 0 and real z<sub>l</sub> ≥ z<sub>min</sub> > 0 the associated form is bounded and coercive on H and Lax–Milgram gives a unique (u, U) for any I with ΣI<sub>l</sub> = 0 (Somersalo, Cheney & Isaacson, 1992). For the complex admittivity used here, σ' > 0 and ωε > 0 place the form's numerical range in a closed sector of the open right half-plane, so it is sectorial and the same conclusion follows. This matters more than it usually would: ωε/σ' reaches 1.40 for kidney and 0.39 for muscle at 100 kHz, so the imaginary part is not a perturbation on the real one.</p>
+
+<div class="mm-warn">The sectoriality argument above is stated, not verified in code. Nothing in <code>eit3d.py</code> checks that Re σ > 0 element-wise or that z<sub>l</sub> is passed with positive real part; a sign error in an admittivity table would produce a non-sectorial form and a silently wrong solve, not an exception. A three-line assertion in <code>CEM3D._assemble</code> would close this.</div>
+
+<h4>Weak form: electrode potentials as extra unknowns</h4>
+
+<p>Multiply (1) by a test function v, integrate by parts, and substitute the flux from (2) and (4). Writing V = (V<sub>1</sub>…V<sub>L</sub>) for the electrode-potential test vector, the variational problem is: find (u, U) ∈ H such that for all (v, V) ∈ H</p>
+
+<p>(6)  ∫<sub>Ω</sub> σ ∇u · ∇v dx + Σ<sub>l</sub> (1/z<sub>l</sub>) ∫<sub>E<sub>l</sub></sub> (u − U<sub>l</sub>)(v − V<sub>l</sub>) dS = Σ<sub>l</sub> I<sub>l</sub> V<sub>l</sub></p>
+
+<p>The right-hand side depends only on V, never on v: the electrode potentials are <em>primary unknowns</em>, coupled to the field through boundary mass terms, and the injected current loads those unknowns alone. Expanding the product in (6) gives four terms (a field–field boundary mass, two field–electrode couplings of opposite sign, an electrode–electrode diagonal), and those are precisely the four blocks assembled in the code.</p>
+
+<h4>The discretisation in eit3d.py</h4>
+
+<p>The field uses continuous P1 tetrahedra (<code>Basis(mesh, ElementTetP1())</code>) and the admittivity uses P0 (<code>self.p0 = self.basis.with_element(ElementTetP0())</code>), i.e. one constant per tet. P0 admittivity is the right pairing here because the bolus is painted onto elements by <code>add_bolus</code>; a continuous σ would smear the lumen boundary the model exists to track. In <code>CEM3D.__init__</code>, for each electrode a <code>FacetBasis</code> restricted to that electrode's facets yields</p>
+
+<ul>
+<li><code>M[l]</code> = ∫<sub>E<sub>l</sub></sub> φ<sub>i</sub>φ<sub>j</sub> dS, the boundary mass matrix,</li>
+<li><code>c[l]</code> = ∫<sub>E<sub>l</sub></sub> φ<sub>i</sub> dS, the coupling vector,</li>
+<li><code>area[l]</code> = <code>c[l].sum()</code> = ∫<sub>E<sub>l</sub></sub> dS, the <em>realised</em> electrode area.</li>
+</ul>
+
+<p>That last identity, area being exactly the sum of the coupling vector, is the hinge of the convergence result below. <code>_assemble</code> then builds</p>
+
+<p>(7)  A = [[K + Σ<sub>l</sub> M<sub>l</sub>/z<sub>l</sub>,  B,  0], [B<sup>T</sup>,  C,  1], [0,  1<sup>T</sup>,  0]],   B<sub>:,l</sub> = −c<sub>l</sub>/z<sub>l</sub>,  C = diag(area<sub>l</sub>/z<sub>l</sub>)</p>
+
+<p>with K the σ-weighted stiffness and the final row/column a Lagrange multiplier enforcing ΣU<sub>l</sub> = 0. The system dimension is N + L + 1; at the finest verification mesh that is 5675 + 16 + 1 = 5692. Two implementation details would silently corrupt a complex-valued solve if mishandled:</p>
+
+<ul>
+<li><code>_stiffness</code> assembles the real and imaginary parts of σ in <em>separate</em> real assemblies and recombines as <code>K_re + 1j*K_im</code>, with the comment that this "avoids skfem casting away the imag part". A single complex assembly would have discarded Im σ, and given ωε/σ' ≈ 1.4 for kidney that would not have been a small error.</li>
+<li>The coupling block is transposed, <code>B.T</code>, not conjugate-transposed. For a complex admittivity this is the correct choice: (6) is a bilinear, not sesquilinear, form, so A is complex <em>symmetric</em> rather than Hermitian. Using <code>B.conj().T</code> would break reciprocity, which is exactly what the V2 check is for.</li>
+</ul>
+
+<p>The matrix is independent of the drive pattern, so <code>solve_drives</code> performs one <code>splu</code> factorisation per frame and back-substitutes once per zone; <code>measure_zones</code> in <code>strip3d.py</code> then reads Z = (U<sub>p</sub> − U<sub>q</sub>)/I off the inner sense pair. At 18 zones that is an 18× saving, and it is what makes 2160-trial studies affordable.</p>
+
+<p><strong>Mesh.</strong> <code>make_cylinder</code> extrudes a disk point set (<code>_disk_points</code>: rings at r = R·i/n_rings with m = max(6, round(2πr·n_rings/R)) points each) over <code>nz</code> equally spaced z-planes and tetrahedralises with <code>Delaunay(..., "Qt Qbb Qc Qz")</code>, keeping tets of volume > 10<sup>−9</sup>R<sup>2</sup>h. The docstring's convex-hull argument is sound: the disk is convex, so the hull of the extruded cloud is the polygonal cylinder exactly, with no prism-splitting bookkeeping.</p>
+
+<div class="mm-warn">Element quality is never measured. A Delaunay triangulation of a structured extruded lattice is riddled with cospherical degeneracies, and the only quality control is a volume floor. No minimum dihedral angle or radius-edge ratio is reported anywhere in the repo, so the conditioning of K is uncharacterised. Test: print the dihedral-angle histogram and κ(A) per mesh level, or re-run V3 on a TetGen mesh with a radius-edge bound and check the slope column reproduces.</div>
+
+<p><em>Discrepancy.</em> <code>make_cylinder</code>'s <em>defaults</em> are height = 14.0, n_rings = 7, nz = 17; the production geometry (R = 5.5, height = 20.0, n_rings = 6, nz = 17) is passed explicitly at every call site. Those defaults are dead parameters and should be aligned or removed, so no future caller silently gets a 14 cm torso.</p>
+
+<h4>Mesh convergence: |Z| does not converge, the slope does</h4>
+
+<p><code>v3_mesh_convergence</code> runs one deterministic, <em>noiseless</em> trial (label "reflux", grade 4, side +1, seed 4242, T = 20 frames, both frequencies) on five meshes and records the mean |Z|, the fitted arrival-time slope, the wave linearity and the decision.</p>
+
+<table class="mm-t">
+<tr><th>rings × nz</th><th>nodes</th><th>tets</th><th>mean |Z| (Ω)</th><th>|Z| err vs finest</th><th>slope (samples/cm)</th><th>slope err vs finest</th><th>lin</th><th>decision</th></tr>
+<tr><td>4 × 11</td><td>704</td><td>3030</td><td>0.3261</td><td>21.2%</td><td>+1.5361</td><td>6.80%</td><td>0.984</td><td>+1</td></tr>
+<tr><td>5 × 13</td><td>1235</td><td>5652</td><td>0.4737</td><td>76.0%</td><td>+1.4791</td><td>2.84%</td><td>0.984</td><td>+1</td></tr>
+<tr><td>6 × 17</td><td>2261</td><td>10848</td><td>0.3024</td><td>12.4%</td><td>+1.4523</td><td>0.97%</td><td>0.997</td><td>+1</td></tr>
+<tr><td>7 × 21</td><td>3717</td><td>18480</td><td>0.2383</td><td>11.4%</td><td>+1.4367</td><td>0.11%</td><td>0.997</td><td>+1</td></tr>
+<tr><td>8 × 25</td><td>5675</td><td>28944</td><td>0.2691</td><td>n/a</td><td>+1.4383</td><td>n/a</td><td>0.997</td><td>+1</td></tr>
+</table>
+
+<p>The |Z| column is not converging. It oscillates (0.326, 0.474, 0.302, 0.238, 0.269) with errors relative to the finest mesh of 21%, 76%, 12%, 11%, and no monotone trend. The slope column converges monotonically to four levels of accuracy: 6.80, 2.84, 0.97, 0.11 percent. The decision is +1 on all five meshes.</p>
+
+<h4>Why: electrode area snaps to mesh facets</h4>
+
+<p><code>place_strips</code> selects an electrode as the set of <em>whole</em> boundary facets whose centroids fall inside an angular window |Δφ| < <code>arc_half</code> = 0.30 rad and an axial window |z − z<sub>k</sub>| < 0.40·dz. With N = 8 over a 16 cm span, dz = 2.286 cm and the axial window is 1.829 cm tall; the arc window is 0.60 rad, i.e. 3.3 cm at R = 5.5. The nominal patch is therefore ≈6.0 cm<sup>2</sup> at every refinement level. The <em>realised</em> patch is not, because facets are indivisible:</p>
+
+<table class="mm-t">
+<tr><th>nz</th><th>axial facet pitch Δz (cm)</th><th>window/Δz</th><th>outer polygon sides m</th><th>angular facet pitch (rad)</th><th>window/pitch</th></tr>
+<tr><td>11</td><td>2.000</td><td>0.91</td><td>25</td><td>0.251</td><td>2.39</td></tr>
+<tr><td>13</td><td>1.667</td><td>1.10</td><td>31</td><td>0.203</td><td>2.96</td></tr>
+<tr><td>17</td><td>1.250</td><td>1.46</td><td>38</td><td>0.165</td><td>3.63</td></tr>
+<tr><td>21</td><td>1.000</td><td>1.83</td><td>44</td><td>0.143</td><td>4.20</td></tr>
+<tr><td>25</td><td>0.833</td><td>2.19</td><td>50</td><td>0.126</td><td>4.77</td></tr>
+</table>
+
+<p>Both ratios are order unity and non-integer, so the count of captured facet rows and columns is a floor that steps at irregular refinement levels. Worse, the electrode centres z<sub>k</sub> = 2.0 + 2.286k are incommensurate with the layer planes at multiples of Δz, so the <em>phase</em> of the window against the facet lattice differs from electrode to electrode within a single mesh. Realised area is therefore a per-electrode, mesh-dependent quantity that jumps discontinuously and does not approach the nominal 6.0 cm<sup>2</sup> monotonically. Since C = diag(area<sub>l</sub>/z<sub>l</sub>) and B<sub>:,l</sub> = −c<sub>l</sub>/z<sub>l</sub> both scale with the realised patch, and since the sensed voltage is an area-weighted average of u over the sense patch so that a wider patch averages a smaller difference, |Z| inherits the jumps.</p>
+
+<p>A candidate alternative explanation, that the polygonal cylinder's lateral area changes with n_rings, is quantitatively too small: the inscribed m-gon perimeter ratio m·sin(π/m)/π runs 0.9974, 0.9983, 0.9989, 0.9991, 0.9993 across the five meshes, a 0.2% effect and three orders below the observed 76% excursion. Facet snapping is the mechanism.</p>
+
+<div class="mm-warn">The two ratio columns above are geometric arithmetic from the selection rule in <code>place_strips</code>, not a measured facet census. <code>CEM3D</code> already stores the ground truth in <code>self.area</code>; the direct test is to log <code>solver.area</code> (all 16 electrodes) at each level of <code>v3_mesh_convergence</code> and check that the per-electrode area spread tracks the |Z| oscillation. This has not been done and should be.</div>
+
+<h4>Why the slope survives, and why this independently justifies fractional normalisation</h4>
+
+<p>Model the discretisation error at zone j as a real positive multiplicative gain plus a small residual:</p>
+
+<p>(8)  Z<sub>j</sub><sup>h</sup>(t) = g<sub>j</sub> Z<sub>j</sub>(t) + ε<sub>j</sub>(t),   g<sub>j</sub> > 0 set by realised electrode area</p>
+
+<p>The pipeline forms Z<sub>ref,j</sub> as the mean of the first two frames and then</p>
+
+<p>(9)  ΔZ<sub>j</sub>(t) = (Z<sub>j</sub><sup>h</sup>(t) − Z<sub>ref,j</sub>)/|Z<sub>ref,j</sub>| = (g<sub>j</sub>Z<sub>j</sub> − g<sub>j</sub>Z̄<sub>j</sub>)/(g<sub>j</sub>|Z̄<sub>j</sub>|) = (Z<sub>j</sub> − Z̄<sub>j</sub>)/|Z̄<sub>j</sub>|</p>
+
+<p>g<sub>j</sub> cancels <em>exactly</em>, to all orders, appearing identically in numerator and denominator. Downstream, <code>zone_series</code> takes Re ΔZ averaged over frequency, <code>_strip_aperture_stats</code> removes the across-zone and per-zone temporal means, <code>xcorr_lag</code> normalises each series again before correlating, and the slope is a least-squares fit of arrival time against <code>zone_z</code>. None of these can see g<sub>j</sub> once (9) has removed it. What remains in the slope is genuine field-resolution error, and that is the column converging monotonically, 6.80 → 0.11 percent.</p>
+
+<p>The ordering is load-bearing and easy to get wrong. The common-mode step subtracts the mean <em>across zones</em>. Per-zone gains do not commute with that operation: had the pipeline correlated raw Z<sub>j</sub><sup>h</sup> rather than ΔZ<sub>j</sub>, subtracting a gain-weighted across-zone mean would have injected a zone-dependent, mesh-dependent component into every series and hence into the arrival times. The fractional normalisation must precede common-mode rejection, and in the code it does.</p>
+
+<p>This connects to a separate audit finding and sharpens it. The <em>subtraction</em> of the resting reference is a provable no-op for the direction call: adding an arbitrary per-zone complex constant to ΔZ moves the decision evidence by 8.9×10<sup>−16</sup>, because every path terminates in a mean removal. The <em>division</em> by |Z<sub>ref,j</sub>| is not a no-op; it is precisely the operation that cancels g<sub>j</sub>. So in the expression (Z − Z<sub>ref</sub>)/|Z<sub>ref</sub>|, the numerator's reference is inert for direction while the denominator's is doing the entire job of making the estimator mesh-independent. The normalisation was adopted for signal-scaling reasons; the convergence study is independent post-hoc justification for it on numerical grounds.</p>
+
+<h4>What the model may and may not claim</h4>
+
+<p>The conclusion is narrow and should be stated without softening:</p>
+
+<ul>
+<li><strong>Supported:</strong> fractional and differential quantities (ΔZ), per-zone arrival times, the fitted slope, its sign, the wave-linearity statistic, and the decision built from them. These are invariant to the per-electrode gain that refinement fails to pin down.</li>
+<li><strong>Not supported:</strong> any absolute impedance number. No claim of the form "the bolus produces X mΩ", "the instrument needs Y Ω of dynamic range", or any threshold in ohms is licensed here. The mean |Z| ≈ 0.3 Ω above is a solver diagnostic, not a prediction. Consequently the SNR budget must be, and is, expressed fractionally.</li>
+<li><strong>Not supported:</strong> generalisation across body habitus. <code>draw_anatomy</code> varies organ <em>positions</em> only; torso radius, height, fat thickness, organ sizes and every tissue admittivity are identical across all simulated children.</li>
+</ul>
+
+<div class="mm-warn">V3 establishes mesh-invariance of the decision on <strong>one</strong> trial (one label, grade 4, one side, one seed), noiseless. That is n = 1 against meshes, not a distribution. It does not exclude the possibility that near-threshold trials, which is where the unexplained 11.1% false-retrograde floor at zero motion lives, flip between meshes. Test: re-run a stratified subset of the Study 6 configuration (say 200 trials spanning grades and motion amplitudes) at the 6×17 and 8×25 levels and report per-trial decision agreement, not just the aggregate rate.</div>
+
+<h4>Why CEM rather than a point-electrode model</h4>
+
+<p>Contact impedance is the dominant nuisance parameter in surface bioimpedance, and V4 measures how well tetrapolar sensing suppresses it here: over the modelled range z<sub>0</sub> ~ U(5, 20) Ω·cm<sup>2</sup>, the tetrapolar transfer impedance varies by 16.2% peak-to-peak against 70.3% for a two-electrode proxy on identical electrodes and identical solves. That is a rejection factor of 4.34×. Over the wider sweep z<sub>0</sub> ∈ {1, 5, 10, 20, 40} it is 48.1% vs 164%, a factor of 3.41×. Rejection, not immunity.</p>
+
+<p>A model without z<sub>l</sub> cannot produce that number at all: it reports zero contact sensitivity by construction, and the 16% residual is invisible. Since 16% is the same order as the ΔZ excursions the estimator works with, a model that hides it is unfit for purpose. That is the argument for paying the CEM's price: L extra unknowns, an L-wide coupling block, and a Robin term assembled per electrode.</p>
+
+<p><em>Discrepancy with the code.</em> The <code>strip3d.py</code> module docstring still reads "contact impedance largely rejected". Given 4.34×, that wording is the same overclaim V4 was written to retire and should be edited to state the measured factor.</p>
+
+<h4>Reciprocity: necessary, not sufficient</h4>
+
+<p>The V2 check finds a maximum relative reciprocity error of 4.77×10<sup>−15</sup> (median 9.35×10<sup>−16</sup>) over 12 zones. The sensing section treats reciprocity physically; the point here is numerical and deflationary. The assembled matrix (7) is complex <em>symmetric by construction</em> (<code>B.T</code>, a diagonal C, a symmetric gauge border), so Z(drive AB, sense CD) = Z(drive CD, sense AB) is an algebraic identity for an exact solve, and the residual is essentially the sparse LU's. The check still earns its place: it catches a transposed or conjugated coupling block, non-symmetric facet quadrature, an inconsistent 1/z<sub>l</sub> between B and C, or a broken gauge row. But any error entering symmetrically (a wrong electrode area, a wrong tissue value, a mis-meshed geometry) passes it untouched. It is a necessary condition on the implementation, not evidence that the physics is right.</p>
