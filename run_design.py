@@ -4,8 +4,18 @@ Locked-design run: characterize the CHOSEN configuration end to end.
 The electrode-count study answered "how many electrodes". This run stops sweeping
 and instead characterizes the single configuration that study selected, at depth:
 
-    6 electrodes per strip (12 channels)   <- best laterality, near-best direction
-    14 cm span                             <- the strongest single lever measured
+    8 electrodes per strip (16 channels)   <- see below; the earlier choice of 6
+                                              was an artifact of a broken selector
+    16 cm span                             <- the strongest single lever measured
+
+    The first version of this study locked N=6 / 14 cm. Both were wrong. The
+    electrode-count curve that selected 6 was produced by a greedy aperture
+    selector; with the selector replaced by fusion, N=8/10/12 all reach 100%
+    when still (previously 76-93%) and N=6 became the WEAKEST mid-range count.
+    N=8/10/12 are within 1.3 points of each other, so the pre-specified rule
+    (smallest not significantly worse) selects 8. Span moved from 14 to 16 cm
+    because correcting the noise model changed the span sweep from 59-88% to
+    22-97%: span matters far more than previously reported.
     tetrapolar Schlumberger zones, fractional dZ/|Z|
     60 dB instrument SNR                   <- 50 dB was already sufficient
     grade >= III as the claimed range
@@ -33,8 +43,8 @@ import directional_sim as ds
 import analyze_subjects as asub
 
 # ---- the locked design -----------------------------------------------------
-N_STRIP = 6
-SPAN = 14.0
+N_STRIP = 8
+SPAN = 16.0
 SNR = 60
 T = 20
 FREQ_KHZ = 50

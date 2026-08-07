@@ -224,17 +224,23 @@ and {S['n_reflux']+S['n_healthy']} simulated children with {K} events each</td><
 
 <h2>4. Results: how many electrodes</h2>
 <p>The flank span is capped by anatomy, so more electrodes means a tighter pitch. Every trial was
-replayed identically across electrode counts, making the comparison paired.</p>
+replayed identically across electrode counts, making the comparison paired. Direction evidence is
+fused across all available apertures rather than taken from a single selected one, because
+selection was measurably the wrong thing to do.</p>
 <table>
 <tr><th rowspan="2">Electrodes per strip</th><th colspan="{len(EMOT)}">Direction accuracy (grade III+)</th>
 <th colspan="{len(EMOT)}">Laterality accuracy</th></tr>
 <tr>{hdr_cnt}{hdr_cnt}</tr>
 {rows_cnt}
 </table>
-<div class="key"><b>Finding 1: more electrodes made direction accuracy worse, not better.</b>
-Direction accuracy falls from {p0(ed(5,0.6))} at N=5 to {p0(ed(8,0.6))}-{p0(ed(12,0.6))} at N=8 and
-above. Over a fixed span, extra electrodes shrink the pitch and add aperture choices for the
-estimator to get wrong. This contradicts the intuition behind 16- and 32-electrode belts.</div>
+<div class="key"><b>Finding 1: denser strips perform better, and an earlier version of this
+report claimed the opposite.</b> Within the stated 0.5 cm motion tolerance, N=8, 10 and 12 all
+reach {p0(ed(12,0.0))} accuracy when still and {p0(ed(8,0.3))}-{p0(ed(10,0.3))} at 0.3 cm, against
+{p0(ed(5,0.3))} for N=5 and {p0(ed(6,0.3))} for N=6. The earlier claim that more electrodes made
+accuracy <i>worse</i> was an artifact of a greedy aperture-selection rule: forcing each aperture on
+identical data showed the selector losing at every N &#8805; 8. Replacing selection with fusion
+across apertures reversed the result. The lesson generalizes: that curve measured the estimator,
+not the physics.</div>
 <div class="key"><b>Finding 2: N=4 is not merely poor, it is undefined.</b> Four electrodes form a
 single tetrapolar zone. One zone has no ordering, so direction does not exist at any signal-to-noise
 ratio. This is the formal argument against any single-array proposal.</div>

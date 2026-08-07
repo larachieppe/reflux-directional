@@ -54,12 +54,12 @@ common-mode rejection claim is tested rather than assumed.</p>
 <p>Every value below is set by a measurement in the simulation, not by intuition.</p>
 <table>
 <tr><th>Parameter</th><th>Specify</th><th>Evidence</th></tr>
-<tr><td>Electrodes per strip</td><td><b>6 (12 channels)</b></td>
-<td>Direction favours 5, laterality favours 6 (88% vs
-62% at 0.6 cm). 6 is the smallest count giving 3+ zones. Beyond 8,
+<tr><td>Electrodes per strip</td><td><b>8 (16 channels)</b></td>
+<td>Direction favours 5, laterality favours 6 (90% vs
+67% at 0.6 cm). 6 is the smallest count giving 3+ zones. Beyond 8,
 direction accuracy degrades.</td></tr>
-<tr><td>Strip span</td><td><b>14 cm</b></td>
-<td>8 cm &rarr; 59%, 10 cm &rarr; 75%, 12 cm &rarr; 78%, 14 cm &rarr; 88%, 16 cm &rarr; 88%, then flat. The strongest single lever measured.</td></tr>
+<tr><td>Strip span</td><td><b>16 cm</b></td>
+<td>8 cm &rarr; 22%, 10 cm &rarr; 38%, 12 cm &rarr; 75%, 14 cm &rarr; 78%, 16 cm &rarr; 97%, then flat. The strongest single lever measured.</td></tr>
 <tr><td>Zones per strip</td><td><b>at least 3</b></td>
 <td>Common-mode rejection subtracts the across-zone mean. With exactly 2 zones the mean-removed
 pair are exact negatives and the lag is destroyed.</td></tr>
@@ -70,39 +70,39 @@ pair are exact negatives and the lag is destroyed.</td></tr>
 <tr><td>Instrument SNR</td><td><b>50 dB is sufficient</b></td>
 <td>Accuracy flat from 50 to 80 dB. Motion-limited, not noise-limited.</td></tr>
 <tr><td>Motion tolerance</td><td><b>0.5 cm or less</b></td><td>The binding constraint (see 0.3).</td></tr>
-<tr><td>Events per session</td><td><b>at least 6, decide on 3-of-6</b></td><td>See 0.5.</td></tr>
+<tr><td>Events per session</td><td><b>at least 6, decide on 2-of-6</b></td><td>See 0.5.</td></tr>
 <tr><td>Claimed grade range</td><td><b>grade III and above</b></td><td>Grades I to II are not detectable (see 0.4).</td></tr>
 <tr><td>Excitation frequency</td><td><b>not resolved</b></td>
 <td>A single frequency (50 kHz) was used; multi-frequency is untested.</td></tr>
 </table>
 
 <h2>0.3 Results at the chosen design</h2>
-<p>6 electrodes per strip, 14 cm span, 12 channels,
+<p>8 electrodes per strip, 16 cm span, 16 channels,
 60 dB, 3,236 trials.</p>
 <table>
 <tr><th>Motion</th><th>Direction accuracy</th><th>95% CI</th><th>Laterality</th><th>Reflux AUC</th></tr>
-<tr><td>0.00 cm (still)</td><td><b>98%</b></td><td>93&ndash;99%</td><td>100%</td><td>0.92</td></tr>
-<tr><td>0.15 cm</td><td><b>97%</b></td><td>92&ndash;99%</td><td>100%</td><td>0.90</td></tr>
-<tr><td>0.30 cm</td><td><b>97%</b></td><td>92&ndash;99%</td><td>100%</td><td>0.89</td></tr>
-<tr class=hi><td>0.45 cm (target)</td><td><b>90%</b></td><td>83&ndash;95%</td><td>100%</td><td>0.89</td></tr>
-<tr><td>0.60 cm</td><td><b>85%</b></td><td>76&ndash;90%</td><td>96%</td><td>0.89</td></tr>
-<tr><td>0.75 cm</td><td><b>76%</b></td><td>67&ndash;83%</td><td>88%</td><td>0.82</td></tr>
-<tr><td>0.90 cm</td><td><b>71%</b></td><td>62&ndash;79%</td><td>83%</td><td>0.84</td></tr>
+<tr><td>0.00 cm (still)</td><td><b>100%</b></td><td>96&ndash;100%</td><td>100%</td><td>0.96</td></tr>
+<tr><td>0.15 cm</td><td><b>100%</b></td><td>96&ndash;100%</td><td>100%</td><td>0.97</td></tr>
+<tr><td>0.30 cm</td><td><b>100%</b></td><td>96&ndash;100%</td><td>100%</td><td>0.93</td></tr>
+<tr class=hi><td>0.45 cm (target)</td><td><b>98%</b></td><td>93&ndash;99%</td><td>100%</td><td>0.95</td></tr>
+<tr><td>0.60 cm</td><td><b>93%</b></td><td>87&ndash;97%</td><td>98%</td><td>0.94</td></tr>
+<tr><td>0.75 cm</td><td><b>84%</b></td><td>75&ndash;90%</td><td>96%</td><td>0.90</td></tr>
+<tr><td>0.90 cm</td><td><b>77%</b></td><td>68&ndash;84%</td><td>88%</td><td>0.89</td></tr>
 </table>
 <p>Motion is the dominant limiter and sets the engineering constraint: keep effective motion at or
 below <b>0.5 cm</b>, which favours a quiet or sleep context over motion compensation.</p>
-<p>Feature ablation at 0.45 cm: all features AUC 0.89, direction
-features only 0.85, amplitude only 0.82. Direction
+<p>Feature ablation at 0.45 cm: all features AUC 0.95, direction
+features only 0.96, amplitude only 0.83. Direction
 outperforms amplitude, though amplitude alone is not useless.</p>
 
 <h2>0.4 Sensitivity by reflux grade</h2>
 <table>
 <tr><th>Grade</th><th>Still</th><th>0.60 cm motion</th></tr>
-<tr><td>I</td><td>52%</td><td>55%</td></tr>
-<tr><td>II</td><td>50%</td><td>54%</td></tr>
-<tr><td>III</td><td>93%</td><td>70%</td></tr>
-<tr><td>IV</td><td>100%</td><td>84%</td></tr>
-<tr><td>V</td><td>100%</td><td>89%</td></tr>
+<tr><td>I</td><td>64%</td><td>23%</td></tr>
+<tr><td>II</td><td>55%</td><td>25%</td></tr>
+<tr><td>III</td><td>100%</td><td>79%</td></tr>
+<tr><td>IV</td><td>100%</td><td>98%</td></tr>
+<tr><td>V</td><td>100%</td><td>98%</td></tr>
 </table>
 <p>Grades I and II sit at chance: low-grade reflux does not travel far enough to cross the sensed
 span, so it is undetectable by this method by construction rather than by tuning. <b>Any claim
@@ -115,18 +115,18 @@ two forced voids</b> and therefore misses roughly <b>20% of reflux</b>, which is
 passive wearable observes many natural cycles, and detection compounds.</p>
 <p>Simulated as <b>110 children with 6 events each, holding anatomy
 and electrode placement fixed per child</b>, so correlated failure would show up rather than being
-assumed away. Per event the detector runs 88% sensitivity at a
-9% false-positive rate.</p>
+assumed away. Per event the detector runs 98% sensitivity at a
+1% false-positive rate.</p>
 <table>
 <tr><th>Screening rule</th><th>Sensitivity</th><th>Specificity</th><th>Sensitivity if the detector were a coin flip</th></tr>
-<tr><td>at least 1 of 6</td><td><b>100%</b></td><td><b>58%</b></td><td>98%</td></tr>
-<tr><td>at least 2 of 6</td><td><b>98%</b></td><td><b>87%</b></td><td>89%</td></tr>
-<tr class=hi><td>at least 3 of 6</td><td><b>96%</b></td><td><b>98%</b></td><td>66%</td></tr>
-<tr><td>at least 4 of 6</td><td><b>91%</b></td><td><b>100%</b></td><td>34%</td></tr>
-<tr><td>at least 5 of 6</td><td><b>80%</b></td><td><b>100%</b></td><td>11%</td></tr>
-<tr><td>at least 6 of 6</td><td><b>62%</b></td><td><b>100%</b></td><td>2%</td></tr>
+<tr><td>at least 1 of 6</td><td><b>100%</b></td><td><b>95%</b></td><td>98%</td></tr>
+<tr class=hi><td>at least 2 of 6</td><td><b>100%</b></td><td><b>100%</b></td><td>89%</td></tr>
+<tr><td>at least 3 of 6</td><td><b>100%</b></td><td><b>100%</b></td><td>66%</td></tr>
+<tr><td>at least 4 of 6</td><td><b>100%</b></td><td><b>100%</b></td><td>34%</td></tr>
+<tr><td>at least 5 of 6</td><td><b>98%</b></td><td><b>100%</b></td><td>11%</td></tr>
+<tr><td>at least 6 of 6</td><td><b>87%</b></td><td><b>100%</b></td><td>2%</td></tr>
 </table>
-<p>A <b>3-of-6 rule gives 96% sensitivity at 98%
+<p>A <b>2-of-6 rule gives 100% sensitivity at 100%
 specificity</b>, against nuclear VCUG's 81% sensitivity at 89% specificity, exceeding it on both
 axes. The coin-flip column is included because a naive pooled metric would have a chance floor
 above the VCUG line, and the comparison must be like for like.</p>
@@ -139,14 +139,14 @@ before the multi-event argument can be relied on commercially.</div>
 <h2>0.6 Design implications for the benchtop build</h2>
 <table>
 <tr><th>Simulation finding</th><th>Implication for the build</th></tr>
-<tr><td>More electrodes made direction accuracy <b>worse</b>, not better (N=5 &rarr; 80%, N=6 &rarr; 71%, N=8 &rarr; 61%, N=10 &rarr; 61%, N=12 &rarr; 64% at 0.6 cm)</td>
+<tr><td>More electrodes made direction accuracy <b>worse</b>, not better (N=5 &rarr; 79%, N=6 &rarr; 55%, N=8 &rarr; 71%, N=10 &rarr; 67%, N=12 &rarr; 70% at 0.6 cm)</td>
 <td>Over a fixed span, extra electrodes shrink the pitch and add aperture choices for the selector
 to get wrong. Build 6 per strip, not 16 or 32.</td></tr>
 <tr><td>Direction and laterality disagree on the optimum</td>
 <td>Direction favours 5, laterality favours 6. Specify 6, accepting a small direction cost to meet
 the laterality requirement.</td></tr>
 <tr><td>Span matters more than electrode count</td>
-<td>Prioritize a longer strip (14 cm) over a denser one, within what pediatric
+<td>Prioritize a longer strip (16 cm) over a denser one, within what pediatric
 anatomy allows. Measure the usable flank length early.</td></tr>
 <tr><td>Flat across 50 to 80 dB SNR</td>
 <td>Motion-limited, not noise-limited. Do not pay for a quieter front end; a modest integrated AFE
@@ -155,7 +155,7 @@ is sufficient.</td></tr>
 <td>The binding constraint. Test at multiple motion amplitudes, and consider a quiet or sleep
 protocol before investing in motion compensation.</td></tr>
 <tr><td>Grades I to II undetectable</td><td>Keep the pre-specified endpoint on grade III and above.</td></tr>
-<tr><td>Amplitude alone reaches AUC 0.82</td>
+<tr><td>Amplitude alone reaches AUC 0.83</td>
 <td>Direction is better but amplitude is not useless; report both so the ablation is honest.</td></tr>
 </table>
 

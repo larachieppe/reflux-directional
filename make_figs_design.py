@@ -54,8 +54,10 @@ for key, lab, col, mk in (("dir_acc", "direction accuracy", ACCENT, "o"),
                           ("lat_acc", "laterality accuracy", C1, "s")):
     ys = [100 * OP[str(m)][key] for m in MOT]
     if key == "dir_acc":
-        lo = [100 * (OP[str(m)][key] - OP[str(m)]["dir_ci"][0]) for m in MOT]
-        hi = [100 * (OP[str(m)]["dir_ci"][1] - OP[str(m)][key]) for m in MOT]
+        # clamp: at 100% accuracy the Wilson upper bound equals the point
+        # estimate, and float rounding can make the arm marginally negative
+        lo = [max(0.0, 100 * (OP[str(m)][key] - OP[str(m)]["dir_ci"][0])) for m in MOT]
+        hi = [max(0.0, 100 * (OP[str(m)]["dir_ci"][1] - OP[str(m)][key])) for m in MOT]
         ax.errorbar(MOT, ys, yerr=[lo, hi], fmt=mk + "-", color=col, lw=2.3, ms=7,
                     capsize=3, label=lab)
     else:

@@ -193,7 +193,7 @@ HTML = f"""<!doctype html>
       {grade_rows}
     </table></div>
     {figcard("d3_grade_heat.png", "Grade against motion",
-             "Direction accuracy for every grade and motion level. The heavy line marks where the claimed range begins: grades I to II sit at or below chance because low-grade reflux does not travel far enough to cross the sensed span.")}
+             "Direction accuracy for every grade and motion level. The heavy line marks where the claimed range begins: grades I to II remain the hard tail because low-grade reflux does not travel far enough to cross the sensed span.")}
   </section>
 
   <section id="multievent">

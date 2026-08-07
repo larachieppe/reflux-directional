@@ -26,7 +26,7 @@ plt.rcParams.update({"font.size": 10.5, "axes.titleweight": "bold",
 
 N = 8
 mesh = eit3d.make_cylinder(R=5.5, height=20.0, n_rings=6, nz=17)
-W = ds.StripWorld(N, span=12.0, mesh=mesh)
+W = ds.StripWorld(N, span=16.0, mesh=mesh)
 print(f"world N={N}: {W.L} electrodes, {len(W.zones)} zones, pitch {W.spacing:.2f} cm")
 
 fig, axs = plt.subplots(2, 2, figsize=(11.5, 7.0))
