@@ -139,7 +139,9 @@ a slope.</p>
  ("Electrodes", "two longitudinal flank strips, one per side, placed on a partial "
   "circumference — deliberately not a closed belt"),
  ("Sensing", "tetrapolar (Kelvin): an outer pair drives current, an inner pair "
-  "senses voltage, so contact impedance largely drops out of the sensed quantity"),
+  "senses voltage. Measured contact-impedance rejection over the modelled "
+  "z<sub>0</sub> range is 4.3&times;, a 16% residual &mdash; a large gain, but "
+  "not the immunity earlier drafts claimed"),
  ("Zones", "symmetric tetrapolar quadruples at odd outer gaps G, giving several "
   "overlapping apertures per strip at different depth sensitivities"),
 ])}
@@ -154,14 +156,21 @@ Constant volume matters: an earlier version modulated bolus amplitude over time,
 which let the estimator identify the class from the amplitude envelope alone
 without using direction at all.</li>
 <li>Body motion is applied as a displacement of the body relative to the
-electrodes, as a smooth random walk plus a periodic breathing term at 0.30 Hz.
+electrodes, as a smooth random walk plus a periodic breathing term. That term
+advances at <b>0.075 cycles per frame</b>, so a 20-frame trial contains 1.5
+breathing cycles. It is <i>not</i> 0.30 Hz, as this section previously stated:
+the model defines no frame rate, timestep or trial duration, so the breathing
+term has no physical frequency at all.
 A <code>grad</code> parameter makes displacement height-dependent, so motion can
 be rigid (grad = 0) or a craniocaudal gradient (grad = 1).</li>
 <li>The CEM problem is solved per frame per frequency, giving a transfer
 impedance per zone.</li>
 <li>Noise is added as a <b>fractional</b> perturbation,
 <code>&sigma;<sub>n</sub> = 10<sup>&minus;SNR/20</sup></code>, with a
-zone-correlated and a zone-independent component.</li>
+zone-independent component at &sigma;<sub>n</sub> and a zone-correlated component
+at 0.5&nbsp;&sigma;<sub>n</sub>. Those add in quadrature, so the realised noise is
+<code>&radic;1.25&nbsp;&sigma;<sub>n</sub></code> and every SNR label is
+optimistic by <b>0.97 dB</b>: the 60 dB arm actually runs at 59.03 dB.</li>
 </ol>
 
 <h4>Estimator</h4>
