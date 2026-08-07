@@ -28,6 +28,8 @@ STUDIES = [
      "metrics_precision.json", "run_precision.py"),
     ("motion2", "Study 6", "Non-rigid respiratory motion",
      "metrics_motion2.json", "run_motion2.py"),
+    ("verify", "Verification", "Numerical verification of the forward model",
+     "metrics_verify.json", "verify_forward.py"),
 ]
 
 
@@ -450,9 +452,79 @@ coherent enough to pass it.</p>
 """
 
 
+def _verify(c):
+    v2 = c["v2_reciprocity"]
+    v3 = c["v3_mesh_convergence"]
+    v4 = c["v4_contact_immunity"]
+    lv = "".join(
+        f"<tr><td>{L['n_rings']} / {L['nz']}</td><td>{L['n_nodes']:,}</td>"
+        f"<td>{L['mean_absZ']:.4g}</td><td>{100*L['absZ_rel_to_finest']:.1f}%</td>"
+        f"<td>{L['slope']:+.4g}</td><td>{100*L['slope_rel_to_finest']:.2f}%</td>"
+        f"<td>{L['decision']:+d}</td></tr>" for L in v3["levels"])
+    return f"""
+<h4>Question</h4>
+<p>Every result in this project rests on the forward solve being correct, and that had been
+asserted rather than demonstrated. These four checks need no patient data and no new
+physics. They are the first thing a numerical analyst on a review panel asks for.</p>
+
+<h4>V1 &mdash; Quasi-static validity</h4>
+<p>Arithmetic only. Two <i>independent</i> conditions must hold for the
+electro-quasi-static reduction to
+<code>&nabla;&middot;(&kappa;&nabla;u) = 0</code> to be legitimate: the domain must
+be electrically small against the <b>free-space</b> wavelength, and the skin depth
+must greatly exceed the domain so magnetic induction is negligible.</p>
+<div class="mm-warn">A common error, made and then corrected in this project's own
+first draft of the check, is to test the domain against the <i>in-medium</i>
+wavelength. In a good conductor &lambda; = 2&pi;&delta;, so that merely restates
+the skin-depth condition and double-counts it. A third quantity,
+<code>&omega;&epsilon;/&sigma;</code>, is often conflated with EQS validity but
+answers a different question entirely: whether permittivity may be
+<i>dropped</i>.</div>
+
+<h4>V2 &mdash; Reciprocity</h4>
+<p>Maxwell reciprocity requires the transfer impedance to be unchanged when the
+drive pair and the sense pair are exchanged. This is a strong, assumption-free
+test of the discretised operator: the drive enters through the electrode current
+constraint and the sense through a potential difference, so the two solves
+exercise different rows of the system, and any asymmetry in the assembly, the
+Robin contact term or the gauge shows up immediately. Measured over
+{v2['n_pairs']} tetrapolar zones.</p>
+
+<h4>V3 &mdash; Mesh convergence</h4>
+<p>The product depends on the <b>sign of a slope</b>, so the quantity that must be
+shown to converge is not the impedance but the arrival-time slope and the decision
+it produces. An identical, deterministic, <b>noiseless</b> trial is solved on five
+meshes; noise is excluded because this measures discretisation error and injected
+noise would swamp it.</p>
+<table class="mm-t"><caption>Refinement sequence</caption>
+<tr><th>rings / layers</th><th>nodes</th><th>mean |Z|</th><th>|Z| error</th>
+<th>slope</th><th>slope error</th><th>decision</th></tr>{lv}</table>
+
+<h4>V4 &mdash; Tetrapolar contact-impedance immunity</h4>
+<p>The claim that contact impedance "largely drops out" of a tetrapolar
+measurement is quantitative and testable. Contact impedance is swept over
+{v4['z0_values']} &Omega;&middot;cm<sup>2</sup> and the tetrapolar transfer
+impedance is compared against a <b>bipolar proxy</b> &mdash; the driven pair's own
+potential difference, which is what a two-electrode instrument reports. Same
+electrodes, same solve, so the comparison is like-for-like. The endpoint is the
+ratio of relative spreads, restricted to the range the model actually draws from,
+U(5, 20).</p>
+
+<h4>How results were reached</h4>
+{_dl([
+ ("Reciprocity criterion", "a direct sparse solve should hold reciprocity to near "
+  "machine precision; anything above ~1e-8 indicates an assembly error"),
+ ("Convergence criterion", "monotone decrease of the slope error toward the finest "
+  "mesh, and an invariant decision across the whole sequence"),
+ ("Rejection factor", "mean relative peak-to-peak spread of the bipolar proxy "
+  "divided by that of the tetrapolar measurement, per zone"),
+])}
+"""
+
+
 BUILDERS = {"electrode-count": _electrode_count, "design": _design,
             "placement": _placement, "tolerance": _tolerance,
-            "precision": _precision, "motion2": _motion2}
+            "precision": _precision, "motion2": _motion2, "verify": _verify}
 
 
 def methods_html(key):

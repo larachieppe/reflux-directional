@@ -14,6 +14,9 @@ D = json.load(open("metrics_design.json"))
 E = json.load(open("metrics_directional.json"))
 P = json.load(open("metrics_placement.json"))
 T = json.load(open("metrics_tolerance.json")) if os.path.exists("metrics_tolerance.json") else None
+PR = json.load(open("metrics_precision.json")) if os.path.exists("metrics_precision.json") else None
+M2 = json.load(open("metrics_motion2.json")) if os.path.exists("metrics_motion2.json") else None
+VF = json.load(open("metrics_verify.json")) if os.path.exists("metrics_verify.json") else None
 OLD_E = json.load(open("baseline_prefix/metrics_directional.json"))
 OLD_D = json.load(open("baseline_prefix/metrics_design.json"))
 
@@ -109,6 +112,56 @@ rows_def = "\n".join(
     f"<tr><td>{i+1}</td><td><b>{t}</b></td><td>{c}</td><td>{w}</td><td>{e}</td></tr>"
     for i,(t,c,w,e) in enumerate(DEFECTS))
 
+# ---------------------------------------------------------------- new results
+def _pct(x, d=1):
+    return "n/a" if x != x else f"{100*x:.{d}f}%"
+
+
+rows_verify = "".join(
+    f"<tr{' class=hi' if L['n_nodes'] == VF['v3_mesh_convergence']['levels'][-1]['n_nodes'] else ''}>"
+    f"<td>{L['n_rings']} / {L['nz']}</td><td>{L['n_nodes']:,}</td><td>{L['n_tets']:,}</td>"
+    f"<td>{L['mean_absZ']:.4g}</td><td>{100*L['absZ_rel_to_finest']:.1f}%</td>"
+    f"<td>{L['slope']:+.4g}</td><td>{100*L['slope_rel_to_finest']:.2f}%</td>"
+    f"<td>{'reflux' if L['decision'] > 0 else ('antegrade' if L['decision'] < 0 else 'abstain')}</td></tr>"
+    for L in VF["v3_mesh_convergence"]["levels"]) if VF else ""
+
+rows_prec = ""
+if PR:
+    for k, v in sorted(PR["grid"].items(), key=lambda t: (t[1]["span"], t[1]["sigma"])):
+        cls = " class=hi" if v["span"] == 10.0 else (" class=bad" if v["low_grade_never"] > 0.35 else "")
+        rows_prec += (
+            f"<tr{cls}><td>{v['span']:.0f} cm @ z={v['z_center']:.2f}</td>"
+            f"<td>{v['sigma']:.1f} cm</td><td>&ge;{v['best_k']} of {PR['config']['k_events']}</td>"
+            f"<td>{_pct(v['best_sens'],0)}</td><td>{_pct(v['best_spec'],0)}</td>"
+            f"<td>{_pct(v['never_detected'],0)}</td><td>{_pct(v['low_grade_never'],0)}</td></tr>")
+
+rows_m2 = ""
+if M2:
+    G2, C2 = M2["grid"], M2["config"]
+    for a in C2["amps"]:
+        cells = ""
+        for g in C2["grads"]:
+            v = G2[f"a{a}_g{g}"]
+            cells += (f"<td>{_pct(v['dir_acc'],0)}</td><td>{_pct(v['dir_acc_decided'],0)}</td>"
+                      f"<td>{_pct(v['trav_abstain'],0)}</td>")
+        cls = " class=hi" if a <= 1.0 else (" class=bad" if a >= 3.0 else "")
+        rows_m2 += f"<tr{cls}><td>{a:.1f} cm</td>{cells}</tr>"
+
+rows_m2fr = ""
+if M2:
+    for a in M2["config"]["amps"]:
+        cells = "".join(
+            f"<td>{_pct(M2['grid'][f'a{a}_g{g}']['false_retrograde'],1)}</td>"
+            for g in M2["config"]["grads"])
+        rows_m2fr += f"<tr><td>{a:.1f} cm</td>{cells}</tr>"
+
+_gm = {}
+if M2:
+    import statistics as _st
+    for g in M2["config"]["grads"]:
+        _gm[g] = (_st.mean(M2["grid"][f"a{a}_g{g}"]["false_retrograde"] for a in M2["config"]["amps"]),
+                  _st.mean(M2["grid"][f"a{a}_g{g}"]["dir_acc"] for a in M2["config"]["amps"]))
+
 HTML = f"""<!doctype html>
 <html><head><meta charset="utf-8">
 <title>Directional reflux sensing: complete simulation report</title>
@@ -139,15 +192,23 @@ Source: https://github.com/larachieppe/reflux-directional</p>
 
 <div class="key"><b>What this is.</b> A finite-element simulation testing, before hardware exists,
 whether a surface bioimpedance device can detect vesicoureteral reflux by measuring the
-<b>direction</b> urine travels rather than reconstructing an image. Four studies are reported:
-electrode count, locked-design characterization, strip placement, and misplacement tolerance.
-Two further studies, placement precision and non-rigid respiratory motion, are running or queued
-and their methods are stated in section 7 ahead of their results.
+<b>direction</b> urine travels rather than reconstructing an image. <b>Six studies and a
+four-part numerical verification of the forward model</b> are reported: electrode count,
+locked-design characterization, strip placement, misplacement tolerance, placement precision
+across a simulated cohort, and non-rigid respiratory motion.
 Section 2 gives the shared forward model, the estimator, and the statistics, so that every study
 below can be read as a statement of what it changed rather than a self-contained method.
-<b>Fourteen defects were found and fixed along the way, and three published headline claims were
-subsequently overturned by measurement.</b> That history is reported here alongside the results,
-because it bears directly on how much weight the numbers can carry.</div>
+<b>Fifteen defects were found and fixed along the way, and five published headline claims were
+subsequently overturned by measurement</b> &mdash; most recently the locked design itself
+(&sect;8) and the project's own stated existential risk (&sect;9). That history is reported here
+alongside the results, because it bears directly on how much weight the numbers can carry.</div>
+<div class="warn"><b>Read this before quoting any number.</b> The design characterised in
+&sect;4 as "the locked design" is a 16 cm strip at mid-torso. Study 5 (&sect;8) has since shown
+that placement never detects 25&ndash;33% of refluxing children across six voids, and 43% of
+low-grade refluxers even when placed perfectly. <b>The locked design should be re-cut to the
+10 cm strip over the ureterovesical junction</b>, and &sect;4 has not yet been re-run at that
+placement. Sections 4 and 8 therefore disagree, deliberately, and section 8 is the newer
+evidence.</div>
 
 <h2>1. Premise</h2>
 <p>The reference test, VCUG, requires catheterization, radiation, and voiding on command. It also
@@ -254,14 +315,151 @@ accuracy.</div>
 
 {bm.methods_html("tolerance")}
 
-<h2>7. Studies 5 and 6: in progress</h2>
-<p>Two further studies are running or queued at the time of writing. Their designs
-are fixed and are stated in full below, so the methods can be reviewed before the
-results exist. No results are reported for them here.</p>
+<h2>7. Verification of the forward model</h2>
+<p>Everything above rests on the forward solve being correct, and until now that had been
+<i>asserted</i> rather than demonstrated. Four checks were run. They need no patient data and no
+new physics, and they are the first thing a numerical analyst asks for.</p>
+
+<h3>7.1 Reciprocity: passes at machine precision</h3>
+<p>Maxwell reciprocity requires the transfer impedance to be unchanged when the drive pair and the
+sense pair are exchanged. It is a strong, assumption-free test: the drive enters through the
+electrode current constraint and the sense through a potential difference, so the two solves
+exercise different rows of the system, and any asymmetry in the assembly, the contact-impedance
+Robin term or the gauge condition shows up at once.</p>
+<div class="key">Maximum relative error <b>{VF['v2_reciprocity']['max_rel_error']:.2e}</b> over
+{VF['v2_reciprocity']['n_pairs']} tetrapolar zones &mdash; machine precision. The discretised
+forward operator is correct.</div>
+
+<h3>7.2 Mesh convergence: the impedance does not converge, but the decision does</h3>
+<p>An identical, deterministic, <b>noiseless</b> trial solved on five meshes spanning an eightfold
+range of node count.</p>
+<table><tr><th>rings / layers</th><th>nodes</th><th>tets</th><th>mean |Z|</th><th>|Z| error</th>
+<th>slope</th><th>slope error</th><th>decision</th></tr>{rows_verify}</table>
+<div class="warn"><b>Read this table carefully, because it says two opposite things.</b> The
+absolute transfer impedance <b>does not converge</b>: the error against the finest mesh oscillates
+between 11% and 76% with no monotone trend. But the arrival-time slope converges cleanly and
+monotonically &mdash; 6.80%, 2.84%, 0.97%, 0.11% &mdash; and the <b>decision is invariant across
+every mesh tested</b>.</div>
+<p>The mechanism is electrode discretisation. |Z| scales with realised electrode area, and
+electrodes snap to mesh facets, so their area changes discontinuously under refinement. The slope
+is a <i>differential timing</i> quantity: it depends on when each zone peaks relative to the
+others, which is insensitive to a common area scaling. This is independent, post-hoc justification
+for the fractional normalisation <code>dZ/|Z<sub>ref</sub>|</code> that was introduced to fix an
+unrelated defect.</p>
+{img("figs_new/n1_mesh.png","Mesh convergence. The arrival-time slope converges monotonically by nearly two orders of magnitude; the absolute impedance plateaus near 11% and never converges. The decision is invariant across all five meshes.")}
+<div class="note"><b>What this forbids.</b> No claim about an absolute impedance magnitude is
+supported by this model &mdash; including any figure quoted to size hardware. Only differential and
+timing claims survive. The headline result is a slope sign, so it is on the right side of that
+line, but the limitation is real and is not narrowed by running more trials.</div>
+
+<h3>7.3 Contact-impedance immunity is 4.3&times;, not "largely eliminated"</h3>
+<p>Sweeping contact impedance across the modelled range and comparing the tetrapolar transfer
+impedance against a bipolar proxy on the <i>same electrodes and the same solves</i>:</p>
+<table><tr><th>measurement</th><th>relative spread over z<sub>0</sub> &isin; U(5,20)</th></tr>
+<tr><td>tetrapolar (this design)</td><td>{VF['v4_contact_immunity']['tetrapolar_rel_spread_modelled_range']:.4f}</td></tr>
+<tr><td>bipolar proxy</td><td>{VF['v4_contact_immunity']['bipolar_rel_spread_modelled_range']:.4f}</td></tr>
+<tr class="hi"><td><b>rejection factor</b></td><td><b>{VF['v4_contact_immunity']['rejection_factor_modelled_range']:.1f}&times;</b></td></tr></table>
+<div class="warn"><b>Claim corrected.</b> This report previously said contact impedance "largely
+drops out" of a tetrapolar measurement. It does not. A <b>16% residual sensitivity</b> is not
+negligible, and tetrapolar sensing buys a factor of about four, not immunity. The four-wire
+geometry remains the right choice &mdash; four times is a large gain and the alternative is
+four times worse &mdash; but the language was wrong and the residual has to be budgeted for in
+hardware.</div>
+
+<h3>7.4 Quasi-statics: valid, but permittivity is not negligible</h3>
+<p>Two <i>independent</i> conditions must hold to reduce Maxwell to
+<code>&nabla;&middot;(&kappa;&nabla;u) = 0</code>: the domain must be electrically small against
+the <b>free-space</b> wavelength (here 6.7&times;10<sup>&minus;5</sup>), and the skin depth must
+exceed the domain (here by 6&times; to 54&times;). Both hold comfortably at both frequencies.</p>
+<p>But <code>&omega;&epsilon;/&sigma;</code> reaches <b>1.40 for kidney at 100 kHz</b> and 0.39 for
+muscle, so displacement current <i>exceeds</i> conduction current in perfused tissue at the top of
+the band. A real-valued conductivity model would be wrong here; carrying the full complex
+admittivity is load-bearing, and the imaginary part carries genuine tissue information &mdash;
+which is the physical argument for the second frequency being worth its cost, a claim this project
+has still not tested.</p>
+<div class="note"><b>A trap worth naming</b>, because the first version of this check fell into it:
+testing the domain against the <i>in-medium</i> wavelength is not an independent condition. In a
+good conductor &lambda; = 2&pi;&delta;, so it merely restates the skin-depth test. And
+<code>&omega;&epsilon;/&sigma;</code> does not bear on quasi-static validity at all &mdash; it
+answers the separate question of whether permittivity may be dropped.</div>
+{bm.methods_html("verify")}
+
+<h2>8. Study 5: placement precision, and the design this overturns</h2>
+<p>48 simulated children per cell, six voids each, with <b>one placement error drawn per child and
+shared across all of that child's voids</b> &mdash; a strip is applied once, not re-applied per
+void. That is what makes failure correlated within a child, which is the entire question. Had the
+error been redrawn per event, repeated voids would average it away and the study would have
+reported a reassuring, meaningless number.</p>
+<table><tr><th>Placement</th><th>error &sigma;</th><th>rule</th><th>Sensitivity</th>
+<th>Specificity</th><th>Never detected<br><span class="sub">on any of 6 voids</span></th>
+<th>Low grades<br>never detected</th></tr>{rows_prec}</table>
+<div class="warn"><b>Claim overturned #5, and it is the big one.</b> This report publishes a locked
+design of a <b>16 cm strip at z = 0.50</b>, and Study 2 characterises that configuration. Study 5
+shows it never detects <b>25% of refluxing children on any of six voids at perfect placement</b>,
+rising to 33% with realistic placement error, and misses <b>43% of low-grade refluxers even when
+placed perfectly</b>. The 10 cm strip over the ureterovesical junction misses <b>0%</b> at perfect
+placement and 8% at 2 cm of error. The published locked design is the wrong one.</div>
+{img("figs_new/n2_precision.png","Study 5. The published 16 cm mid-torso placement loses a quarter of all refluxing children and 43% of low-grade refluxers even when placed perfectly. The 10 cm strip over the ureterovesical junction misses none.")}
+<p>This is the same lesson as Study 3, arriving a second time by a different route: low-grade
+reflux is a <b>placement</b> problem. A long mid-torso strip spreads its zones over anatomy where
+the low-grade bolus never travels, and no amount of repeat observation recovers a child whose
+strip never covered the relevant segment. Repeat voids only help when failure is independent
+across voids, and placement failure is precisely the kind that is not.</p>
+<div class="note"><b>Do not over-read the individual cells.</b> With 48 children per cell the
+confidence intervals are wide, and the 16 cm arm is non-monotonic in &sigma; (75%, 67%, 88%, 83%),
+which is not physically sensible and indicates large per-cell noise. The <i>never-detected</i> gap
+between the two placements is large and consistent across every &sigma;, and that is the finding.
+The individual sensitivity figures are not precise enough to rank.</div>
 {bm.methods_html("precision")}
+
+<h2>9. Study 6: non-rigid respiratory motion &mdash; the predicted failure did not happen</h2>
+<p>Every motion result before this one used a <b>rigid</b> translation, which is exactly the
+perturbation that subtracting the across-zone mean provably nulls. A rigid-only model can only ever
+<i>confirm</i> the common-mode rejection claim; it cannot test it. This report previously named
+non-rigid motion the single most likely place the model flatters the design, on the argument that a
+craniocaudal gradient survives mean subtraction and injects a phase-locked false travelling wave
+&mdash; the exact shape of the failure that took the prior tomographic program from 73% to 44%.</p>
+<h3>9.1 The gradient hypothesis, tested</h3>
+<table><tr><th>Displacement</th><th>rigid (grad 0)</th><th>half gradient</th><th>full gradient</th></tr>
+{rows_m2fr}</table>
+<p class="cap">False-retrograde rate on non-travelling windows: how often the device invents reflux
+while the child is merely breathing.</p>
+<div class="key"><b>The hypothesis is refuted.</b> Averaged over amplitudes, false-retrograde runs
+{_pct(_gm[0.0][0],1)} rigid, {_pct(_gm[0.5][0],1)} at half gradient and {_pct(_gm[1.0][0],1)} at
+full gradient, and direction accuracy runs {_pct(_gm[0.0][1],1)}, {_pct(_gm[0.5][1],1)} and
+{_pct(_gm[1.0][1],1)}. There is no gradient penalty at any amplitude. The full-gradient arm is, if
+anything, slightly better. The predicted false travelling wave did not appear.</div>
+{img("figs_new/n3_gradient.png","Study 6. The three gradient curves lie on top of one another at every amplitude. The predicted craniocaudal false travelling wave does not appear.")}
+<p>That makes five confident claims in this project overturned by measurement, and this one was the
+authors' own stated existential risk. Candidate explanations &mdash; that the gradient displaces
+kidney and bladder differentially in a way that reinforces rather than mimics the true bolus
+signature, or that the induced slope is simply small against the bolus-induced slope at these
+amplitudes &mdash; are <b>post hoc and untested</b>. The honest statement is that the mechanism was
+predicted, the prediction was wrong, and why it was wrong is not yet established.</p>
+
+<h3>9.2 What actually degrades the measurement</h3>
+<table><tr><th rowspan="2">Displacement</th><th colspan="3">rigid</th><th colspan="3">half gradient</th>
+<th colspan="3">full gradient</th></tr>
+<tr><th>raw</th><th>on calls</th><th>abstain</th><th>raw</th><th>on calls</th><th>abstain</th>
+<th>raw</th><th>on calls</th><th>abstain</th></tr>{rows_m2}</table>
+<p>Amplitude, not gradient. Raw accuracy falls from 100% to under 50% between 0 and 3 cm. But the
+failure mode is <b>safe</b>: accuracy <i>on the calls actually made</i> holds at 84% at 2 cm and
+62&ndash;69% at 3 cm, while the abstention rate climbs to roughly a third. The estimator degrades
+into declining to answer, not into answering confidently and wrongly. That is the behaviour the
+abstain gate was designed to produce, and this is the first study that genuinely tested it.</p>
+{img("figs_new/n4_abstain.png","Study 6. The gap between raw accuracy and accuracy-on-calls-made is the abstain gate working: under motion the estimator declines to answer rather than answering wrongly.")}
+<p>For scale: quiet-breathing renal excursion is about 1 cm, where the design holds
+{_pct(M2['grid']['a1.0_g1.0']['dir_acc_decided'],0)} on calls made with only
+{_pct(M2['grid']['a1.0_g1.0']['trav_abstain'],0)} abstention. Two to three centimetres is deep
+breathing or crying.</p>
+<div class="warn"><b>An unexplained floor.</b> False-retrograde on empty windows is
+{_pct(M2['grid']['a0.0_g0.0']['false_retrograde'],1)} <b>at zero motion</b>. Motion does not explain
+it, so something else does &mdash; noise passing the gate, a residual in the common-mode step, or a
+bladder-filling confounder leaking into the slope. It is a floor on achievable specificity and it
+has not been chased down.</div>
 {bm.methods_html("motion2")}
 
-<h2>8. Defect log</h2>
+<h2>10. Defect log</h2>
 <p>Fourteen defects were found and corrected. Six by debugging when the detector sat at chance
 despite correct forward physics, five by independent adversarial review of the code, and three by
 a later audit. Several fixes introduced new defects, which is itself part of the record.</p>
@@ -274,7 +472,7 @@ measuring a threshold distribution instead of choosing a plausible number, readi
 vector actually contained instead of trusting the function's return value. Simulation results here
 should be treated as hypotheses for a phantom to test, not as measurements.</div>
 
-<h2>9. What survived, what did not</h2>
+<h2>11. What survived, what did not</h2>
 <table><tr><th>Claim</th><th>Status</th></tr>
 <tr class="bad"><td>More electrodes make direction accuracy worse</td><td><b>Overturned.</b> Artifact of greedy aperture selection.</td></tr>
 <tr class="bad"><td>Span is the dominant lever; longer is better</td><td><b>Overturned.</b> Span was a proxy for placement; a shorter well-placed strip wins.</td></tr>
@@ -285,17 +483,35 @@ should be treated as hypotheses for a phantom to test, not as measurements.</div
 <tr class="hi"><td>Multi-event capture beats single-void VCUG</td><td>Holds, now on separated sensitivity and specificity with the chance floor shown.</td></tr>
 </table>
 
-<h2>10. Open risks</h2>
+<h2>12. Open risks</h2>
 <ol>
-<li><b>Placement precision is the binding constraint.</b> &plusmn;1 cm on an invisible landmark, on a
-child. This decides whether low-grade detection is real in practice.</li>
+<li><b>Placement precision is the binding constraint</b>, and Study 5 has now confirmed it twice
+over. &plusmn;1 cm on a landmark that is not externally visible, on a child who will not hold
+still. It decides whether low-grade detection is real in practice, and it has just invalidated the
+published locked design.</li>
 <li><b>No physical data.</b> No phantom, animal or clinical measurement stands behind any number
 here. This is a feasibility envelope, not clinical performance.</li>
-<li><b>Motion is modelled as a rigid translation</b>, which is the one perturbation across-zone mean
-subtraction provably nulls. Real respiratory motion is a craniocaudal gradient and would not cancel
-as cleanly. This is the most likely place the model flatters the design.</li>
-<li><b>Single excitation frequency.</b> Multi-frequency is untested.</li>
+<li><b>Motion above about 1 cm.</b> Non-rigid motion turned out <i>not</i> to be the threat
+(&sect;9), but displacement amplitude is: beyond 2 cm the device spends a third of its time
+abstaining. The residual question is how often a real child exceeds that during a void.</li>
+<li><b>An unexplained {_pct(M2['grid']['a0.0_g0.0']['false_retrograde'],1)} false-retrograde floor
+at zero motion</b>, which caps achievable specificity and has no identified cause.</li>
+<li><b>Absolute impedance magnitudes are not mesh-converged</b> (&sect;7.2). Any hardware sizing
+taken from this model inherits that, and more trials will not fix it &mdash; only a finer mesh or a
+convergence-corrected estimate will.</li>
+<li><b>Contact impedance is rejected only 4.3&times;</b>, not eliminated, leaving 16% residual
+sensitivity to budget for.</li>
+<li><b>Single excitation frequency in the estimator.</b> Two are solved but frequency is never used
+discriminatively &mdash; and &sect;7.4 shows the imaginary part carries real information, so this is
+a missed lever rather than a neutral omission.</li>
+<li><b>Bilateral reflux is structurally unreportable</b>: the estimator selects one strip, so it
+cannot express "both sides", which is a stated clinical requirement.</li>
 <li><b>Structured anatomy</b>, not segmented CT; real variation is larger.</li>
+<li><b>Freedom to operate.</b> The prior-art patent's independent claims are disjunctive over
+bioimpedance <i>or</i> tomography, so "we do not reconstruct an image" defeats only two of twelve
+claims. The position rests entirely on never estimating a volume nor comparing one to a control
+value &mdash; and the resting-reference baseline currently used reads onto the broadest claim's
+language. That is an engineering constraint, not just a legal one.</li>
 </ol>
 <div class="key"><b>Recommended next step.</b> A layered phantom with a tube analogue, measuring
 depth against aperture and the fraction of placements that fail. Those are the two quantities that

@@ -116,10 +116,19 @@ class StripWorld:
         self.z_kidney = 0.80 * height
 
     # ---------------- conductivity map ----------------
-    def base_sigma(self, f, anat, shift=(0.0, 0.0, 0.0)):
-        x = self.cent[:, 0] - shift[0]
-        y = self.cent[:, 1] - shift[1]
-        z = self.cent[:, 2] - shift[2]
+    def base_sigma(self, f, anat, shift=(0.0, 0.0, 0.0), grad=0.0):
+        """grad in [0,1] makes the displacement DEPEND ON HEIGHT rather than
+        being a rigid translation. grad=0 is the old rigid body shift, which is
+        precisely the perturbation that across-zone mean subtraction provably
+        nulls, so a rigid-only model can only ever CONFIRM common-mode rejection.
+        Real respiratory motion is a craniocaudal gradient: the kidney travels
+        1-3 cm while the bladder is nearly fixed. A displacement linear in z
+        survives mean subtraction and enters the arrival-time slope directly."""
+        zf = self.cent[:, 2] / max(self.H, 1e-9)
+        w = (1.0 - grad) + grad * zf          # 1 everywhere if grad=0
+        x = self.cent[:, 0] - shift[0] * w
+        y = self.cent[:, 1] - shift[1] * w
+        z = self.cent[:, 2] - shift[2] * w
         r = np.hypot(x, y)
         sig = np.full(self.cent.shape[0], admittivity("muscle", f), complex)
         sig[r > 0.82 * self.R] = admittivity("fat", f)
@@ -145,10 +154,13 @@ class StripWorld:
         sig[ld < 1] = admittivity("urine", f)             # lumen
         return sig
 
-    def add_bolus(self, sig, f, center, radii, shift=(0.0, 0.0, 0.0), frac=1.0):
-        x = self.cent[:, 0] - shift[0]
-        y = self.cent[:, 1] - shift[1]
-        z = self.cent[:, 2] - shift[2]
+    def add_bolus(self, sig, f, center, radii, shift=(0.0, 0.0, 0.0), frac=1.0,
+                  grad=0.0):
+        zf = self.cent[:, 2] / max(self.H, 1e-9)
+        w = (1.0 - grad) + grad * zf
+        x = self.cent[:, 0] - shift[0] * w
+        y = self.cent[:, 1] - shift[1] * w
+        z = self.cent[:, 2] - shift[2] * w
         d = ((x - center[0]) / radii[0])**2 + ((y - center[1]) / radii[1])**2 \
             + ((z - center[2]) / radii[2])**2
         m = d < 1.0
@@ -250,7 +262,8 @@ def bolus_path(world, anat, label, grade, side, T):
 
 
 def simulate_trial(world, label, rng, grade=3, side=+1, T=16, freqs=FREQS,
-                   snr_db=60.0, motion_amp=0.0, amp=1.0, anat=None):
+                   snr_db=60.0, motion_amp=0.0, amp=1.0, anat=None,
+                   motion_grad=0.0, breath_hz=0.30):
     """Return Z tensor (T, F, n_zones) complex, baseline-subtracted + noisy.
 
     `anat` may be supplied to hold the body and electrode placement FIXED across
@@ -276,10 +289,10 @@ def simulate_trial(world, label, rng, grade=3, side=+1, T=16, freqs=FREQS,
             anat_t["b_r"] = [anat["b_r"][0] * g, anat["b_r"][1] * g,
                              anat["b_r"][2] * g]
         for fi, f in enumerate(freqs):
-            sig = world.base_sigma(f, anat_t, shift=disp[ti])
+            sig = world.base_sigma(f, anat_t, shift=disp[ti], grad=motion_grad)
             if label in ("reflux", "antegrade") and frac[ti] > 1e-3:
                 sig = world.add_bolus(sig, f, cs[ti], radii, shift=disp[ti],
-                                      frac=float(frac[ti]))
+                                      frac=float(frac[ti]), grad=motion_grad)
             Z[ti, fi] = strip3d.measure_zones(world.solver, sig, zc_t[ti],
                                               world.zones, amp)
     # Baseline: a RESTING reference from before the bolus enters the sensed span

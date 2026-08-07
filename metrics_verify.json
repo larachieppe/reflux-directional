@@ -1,0 +1,396 @@
+{
+ "v1_quasistatic": {
+  "50kHz": {
+   "muscle": {
+    "sigma": 0.34,
+    "eps_r": 26000.0,
+    "omega_eps_over_sigma": 0.21271251060032814,
+    "skin_depth_m": 3.860074360041484,
+    "skin_depth_over_L": 19.30037180020742,
+    "wavelength_m": 24.253562503633297,
+    "L_over_wavelength": 0.008246211251235322,
+    "free_space_wavelength_m": 5995.84916,
+    "L_over_free_space_wavelength": 3.3356409519815205e-05,
+    "eqs_ok": true,
+    "permittivity_negligible": false
+   },
+   "fat": {
+    "sigma": 0.043,
+    "eps_r": 1500.0,
+    "omega_eps_over_sigma": 0.09703343506812824,
+    "skin_depth_m": 10.854277028741796,
+    "skin_depth_over_L": 54.271385143708976,
+    "wavelength_m": 68.19943394704735,
+    "L_over_wavelength": 0.002932575659723036,
+    "free_space_wavelength_m": 5995.84916,
+    "L_over_free_space_wavelength": 3.3356409519815205e-05,
+    "eqs_ok": true,
+    "permittivity_negligible": true
+   },
+   "kidney": {
+    "sigma": 0.11,
+    "eps_r": 30000.0,
+    "omega_eps_over_sigma": 0.7586250378053662,
+    "skin_depth_m": 6.786389575745701,
+    "skin_depth_over_L": 33.9319478787285,
+    "wavelength_m": 42.64014327112209,
+    "L_over_wavelength": 0.004690415759823429,
+    "free_space_wavelength_m": 5995.84916,
+    "L_over_free_space_wavelength": 3.3356409519815205e-05,
+    "eqs_ok": true,
+    "permittivity_negligible": false
+   },
+   "bladder": {
+    "sigma": 0.3,
+    "eps_r": 4000.0,
+    "omega_eps_over_sigma": 0.03708833518159568,
+    "skin_depth_m": 4.109362960409999,
+    "skin_depth_over_L": 20.54681480204999,
+    "wavelength_m": 25.81988897471611,
+    "L_over_wavelength": 0.007745966692414835,
+    "free_space_wavelength_m": 5995.84916,
+    "L_over_free_space_wavelength": 3.3356409519815205e-05,
+    "eqs_ok": true,
+    "permittivity_negligible": true
+   },
+   "urine": {
+    "sigma": 1.7,
+    "eps_r": 80.0,
+    "omega_eps_over_sigma": 0.00013090000652327886,
+    "skin_depth_m": 1.7262777334513513,
+    "skin_depth_over_L": 8.631388667256756,
+    "wavelength_m": 10.846522890932809,
+    "L_over_wavelength": 0.018439088914585774,
+    "free_space_wavelength_m": 5995.84916,
+    "L_over_free_space_wavelength": 3.3356409519815205e-05,
+    "eqs_ok": true,
+    "permittivity_negligible": true
+   }
+  },
+  "100kHz": {
+   "muscle": {
+    "sigma": 0.3440940079410302,
+    "eps_r": 24258.857779956994,
+    "omega_eps_over_sigma": 0.3922128667029403,
+    "skin_depth_m": 2.713198552554443,
+    "skin_depth_over_L": 13.565992762772213,
+    "wavelength_m": 17.047529280870997,
+    "L_over_wavelength": 0.011731905351493935,
+    "free_space_wavelength_m": 2997.92458,
+    "L_over_free_space_wavelength": 6.671281903963041e-05,
+    "eqs_ok": true,
+    "permittivity_negligible": false
+   },
+   "fat": {
+    "sigma": 0.04351777159254205,
+    "eps_r": 1399.5494873052112,
+    "omega_eps_over_sigma": 0.17891642398792448,
+    "skin_depth_m": 7.629337151704685,
+    "skin_depth_over_L": 38.146685758523425,
+    "wavelength_m": 47.93653909511023,
+    "L_over_wavelength": 0.004172182718555939,
+    "free_space_wavelength_m": 2997.92458,
+    "L_over_free_space_wavelength": 6.671281903963041e-05,
+    "eqs_ok": true,
+    "permittivity_negligible": false
+   },
+   "kidney": {
+    "sigma": 0.11132453198092152,
+    "eps_r": 27990.989746104224,
+    "omega_eps_over_sigma": 1.3988011329965004,
+    "skin_depth_m": 4.770069344929902,
+    "skin_depth_over_L": 23.85034672464951,
+    "wavelength_m": 29.971229622291315,
+    "L_over_wavelength": 0.006673066221188622,
+    "free_space_wavelength_m": 2997.92458,
+    "L_over_free_space_wavelength": 6.671281903963041e-05,
+    "eqs_ok": true,
+    "permittivity_negligible": false
+   },
+   "bladder": {
+    "sigma": 0.30361235994796776,
+    "eps_r": 3732.13196614723,
+    "omega_eps_over_sigma": 0.0683858331687178,
+    "skin_depth_m": 2.8884204282493213,
+    "skin_depth_over_L": 14.442102141246606,
+    "wavelength_m": 18.148480795733505,
+    "L_over_wavelength": 0.011020206167726043,
+    "free_space_wavelength_m": 2997.92458,
+    "L_over_free_space_wavelength": 6.671281903963041e-05,
+    "eqs_ok": true,
+    "permittivity_negligible": true
+   },
+   "urine": {
+    "sigma": 1.7204700397051507,
+    "eps_r": 74.64263932294459,
+    "omega_eps_over_sigma": 0.00024136176412488633,
+    "skin_depth_m": 1.213379279993154,
+    "skin_depth_over_L": 6.06689639996577,
+    "wavelength_m": 7.623886864089131,
+    "L_over_wavelength": 0.026233337871534004,
+    "free_space_wavelength_m": 2997.92458,
+    "L_over_free_space_wavelength": 6.671281903963041e-05,
+    "eqs_ok": true,
+    "permittivity_negligible": true
+   }
+  },
+  "criteria": "Electro-quasi-static validity requires (i) domain size << wavelength and (ii) skin depth >> domain size, so that magnetic induction is negligible and the problem reduces to div(kappa grad u) = 0 in the complex admittivity kappa = sigma + j*omega*eps. It does NOT require omega*eps/sigma << 1. That separate ratio says only whether permittivity may be DROPPED, i.e. whether a real-conductivity model would suffice. This model carries the full complex admittivity, so it is correct whether or not that ratio is small.",
+  "interpretation": "EQS holds comfortably at both frequencies: skin depth exceeds the domain by more than an order of magnitude and the domain is under 1% of a wavelength. But omega*eps/sigma is NOT small in the perfused soft tissues - it reaches ~1.4 for kidney at 100 kHz, where displacement current slightly EXCEEDS conduction current. Two consequences follow. First, a real-conductivity model would be wrong here and the complex admittivity is doing necessary work. Second, the imaginary part of the measurement carries genuine tissue information, which is the physical argument for the second frequency being worth its cost - a claim this project has NOT yet tested, since frequency is solved but never used as a discriminative feature."
+ },
+ "v2_reciprocity": {
+  "n_pairs": 12,
+  "max_rel_error": 4.773319519257591e-15,
+  "median_rel_error": 9.346610590695797e-16,
+  "mean_rel_error": 1.492504079641082e-15,
+  "passes": true,
+  "examples": [
+   {
+    "fwd": [
+     0.32461531355778417,
+     -0.05058085535937114
+    ],
+    "rev": [
+     0.3246153135577857,
+     -0.050580855359371346
+    ],
+    "rel": 4.773319519257591e-15
+   },
+   {
+    "fwd": [
+     0.4514977254965581,
+     -0.06820148599415443
+    ],
+    "rev": [
+     0.451497725496557,
+     -0.06820148599415425
+    ],
+    "rel": 2.463287694520679e-15
+   },
+   {
+    "fwd": [
+     0.28590817575395305,
+     -0.045722765203461524
+    ],
+    "rev": [
+     0.2859081757539529,
+     -0.04572276520346154
+    ],
+    "rel": 5.771570489508586e-16
+   },
+   {
+    "fwd": [
+     0.46048348071460204,
+     -0.07578003133163766
+    ],
+    "rev": [
+     0.46048348071460177,
+     -0.0757800313316377
+    ],
+    "rel": 6.01402561173451e-16
+   }
+  ]
+ },
+ "v4_contact_immunity": {
+  "z0_values": [
+   1.0,
+   5.0,
+   10.0,
+   20.0,
+   40.0
+  ],
+  "n_zones": 8,
+  "tetrapolar_rel_spread_full": 0.48096228907895633,
+  "bipolar_rel_spread_full": 1.6411507967412153,
+  "rejection_factor_full": 3.412223440394926,
+  "tetrapolar_rel_spread_modelled_range": 0.16205836576590754,
+  "bipolar_rel_spread_modelled_range": 0.7031280280806216,
+  "rejection_factor_modelled_range": 4.338733299929029,
+  "note": "rejection factor is how many times more sensitive a two-electrode measurement is to contact impedance than the tetrapolar one, on identical electrodes and identical solves"
+ },
+ "v3_mesh_convergence": {
+  "levels": [
+   {
+    "n_rings": 4,
+    "nz": 11,
+    "n_nodes": 704,
+    "n_tets": 3030,
+    "n_zones": 18,
+    "mean_absZ": 0.3260786576210682,
+    "zone_absZ": [
+     0.4967381991171566,
+     0.4903834966002677,
+     0.515958103246079,
+     0.47743374865865523,
+     0.5103005422340458,
+     0.15762267315147557,
+     0.1684873543463984,
+     0.1542628254362244,
+     0.09972191461342347,
+     0.4728287895211864,
+     0.3829191460875695,
+     0.48608237963631756,
+     0.35010625845654625,
+     0.5290150950164679,
+     0.1714806121063345,
+     0.16008273664046233,
+     0.13484262863472096,
+     0.11114933367589556
+    ],
+    "slope": 1.5360596453009348,
+    "lin": 0.9840187414337326,
+    "decision": 1,
+    "strip": 0,
+    "build_solve_s": 0.6,
+    "absZ_rel_to_finest": 0.21192684550124388,
+    "slope_rel_to_finest": 0.06797391784823317
+   },
+   {
+    "n_rings": 5,
+    "nz": 13,
+    "n_nodes": 1235,
+    "n_tets": 5652,
+    "n_zones": 18,
+    "mean_absZ": 0.47367361385395096,
+    "zone_absZ": [
+     0.7013230449658566,
+     1.0429468551033572,
+     0.5153809576123782,
+     0.8537706085916592,
+     0.7725693833398417,
+     0.30437705321870695,
+     0.17140694925287586,
+     0.24173929252452314,
+     0.1046884842058023,
+     0.749690705516327,
+     0.669641864106367,
+     0.45962681869523375,
+     0.4855378492105649,
+     0.7356172647058631,
+     0.26458367281230183,
+     0.15207535393343286,
+     0.1951899067934022,
+     0.10595898478262435
+    ],
+    "slope": 1.4790790058307492,
+    "lin": 0.9843344116919961,
+    "decision": 1,
+    "strip": 0,
+    "build_solve_s": 1.4,
+    "absZ_rel_to_finest": 0.7604886281833821,
+    "slope_rel_to_finest": 0.02835707291474779
+   },
+   {
+    "n_rings": 6,
+    "nz": 17,
+    "n_nodes": 2261,
+    "n_tets": 10848,
+    "n_zones": 18,
+    "mean_absZ": 0.3023876684639788,
+    "zone_absZ": [
+     0.31173111808294324,
+     0.45357096970748956,
+     0.28818352538598474,
+     0.46508423774835816,
+     0.3122855891684793,
+     0.16335599008096807,
+     0.13750878594652077,
+     0.1816100853013752,
+     0.09138290836880372,
+     0.4151684253507386,
+     0.6921253735338359,
+     0.40502566204970974,
+     0.5692470717458568,
+     0.30594962794057723,
+     0.2088163967698219,
+     0.1571250531486212,
+     0.1896910974991028,
+     0.09511611452243107
+    ],
+    "slope": 1.4522909438372753,
+    "lin": 0.9969313116606847,
+    "decision": 1,
+    "strip": 0,
+    "build_solve_s": 3.6,
+    "absZ_rel_to_finest": 0.12387525093990626,
+    "slope_rel_to_finest": 0.009732176670483239
+   },
+   {
+    "n_rings": 7,
+    "nz": 21,
+    "n_nodes": 3717,
+    "n_tets": 18480,
+    "n_zones": 18,
+    "mean_absZ": 0.23833914056090613,
+    "zone_absZ": [
+     0.30158339370973547,
+     0.32423551132050404,
+     0.25198572092811655,
+     0.36423559009169526,
+     0.3251831018148861,
+     0.1527755165686619,
+     0.12229162625905493,
+     0.16895296139989657,
+     0.09079186799107578,
+     0.29810405197009227,
+     0.385536187621948,
+     0.2564278220522897,
+     0.34741958424354163,
+     0.34363358706416636,
+     0.1832158344898693,
+     0.12639806833211806,
+     0.15370809878161598,
+     0.09362600545704228
+    ],
+    "slope": 1.436721838353633,
+    "lin": 0.9966446917202822,
+    "decision": 1,
+    "strip": 0,
+    "build_solve_s": 8.8,
+    "absZ_rel_to_finest": 0.11417200718752671,
+    "slope_rel_to_finest": 0.0010925322733548446
+   },
+   {
+    "n_rings": 8,
+    "nz": 25,
+    "n_nodes": 5675,
+    "n_tets": 28944,
+    "n_zones": 18,
+    "mean_absZ": 0.26905803665583833,
+    "zone_absZ": [
+     0.38666718991609866,
+     0.31658111260947447,
+     0.36862519505424285,
+     0.32527457856809733,
+     0.457642298182691,
+     0.14477574596562706,
+     0.14383287120718383,
+     0.1522821806753004,
+     0.11038564879642636,
+     0.41161646227569737,
+     0.353932562323538,
+     0.335953102596704,
+     0.34746970379657877,
+     0.44334714077139553,
+     0.17258714592336205,
+     0.12299512719431223,
+     0.15224319749486653,
+     0.09683339645349373
+    ],
+    "slope": 1.4382932201151564,
+    "lin": 0.9970569309772017,
+    "decision": 1,
+    "strip": 0,
+    "build_solve_s": 22.8,
+    "absZ_rel_to_finest": 0.0,
+    "slope_rel_to_finest": 0.0
+   }
+  ],
+  "decision_stable": true,
+  "decisions": [
+   1
+  ],
+  "absZ_rel_change_finest_two": 0.11417200718752671,
+  "slope_rel_change_finest_two": 0.0010925322733548446
+ },
+ "runtime_min": 0.6555746833483378
+}
