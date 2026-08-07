@@ -1,3 +1,6 @@
+import sys
+sys.exit("SUPERSEDED: prose now lives in report/*.md. Run build_report_md.py instead.")
+
 """
 Build FULL_REPORT.html: everything built since the two-strip decision.
 
