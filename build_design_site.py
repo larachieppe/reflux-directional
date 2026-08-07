@@ -20,6 +20,29 @@ def num(x, d=2):
     return "n/a" if x != x else f"{x:.{d}f}"
 
 
+def grade_verdict(acc_reflux, n=None):
+    """Describe a grade's behaviour FROM THE DATA, never hardcoded.
+
+    The distinction matters clinically and was got wrong once: prose said grades
+    I-II were "at or below chance, undetectable by construction" while the data
+    showed reflux called correctly 0 of 28 times. That is not a detector
+    shrugging, it is a detector confidently reporting reflux as normal flow, and
+    a confident false negative is worse than an uncertain one.
+    """
+    if acc_reflux != acc_reflux:
+        return ("undefined", "no measurement")
+    if acc_reflux <= 0.15:
+        return ("inverted", "systematically reported as normal flow (a confident "
+                            "false negative, not an uncertain one)")
+    if acc_reflux <= 0.40:
+        return ("mostly inverted", "usually reported as normal flow")
+    if acc_reflux <= 0.60:
+        return ("at chance", "no better than a coin flip")
+    if acc_reflux <= 0.85:
+        return ("partial", "detected more often than not")
+    return ("detected", "reliably detected")
+
+
 CSS = open("site.css").read()
 
 

@@ -27,6 +27,29 @@ def ed(n, m):
     return float("nan") if d.get("undecidable", 0) > 0.99 else d["dir_acc"]
 
 
+def grade_verdict(acc_reflux, n=None):
+    """Describe a grade's behaviour FROM THE DATA, never hardcoded.
+
+    The distinction matters clinically and was got wrong once: prose said grades
+    I-II were "at or below chance, undetectable by construction" while the data
+    showed reflux called correctly 0 of 28 times. That is not a detector
+    shrugging, it is a detector confidently reporting reflux as normal flow, and
+    a confident false negative is worse than an uncertain one.
+    """
+    if acc_reflux != acc_reflux:
+        return ("undefined", "no measurement")
+    if acc_reflux <= 0.15:
+        return ("inverted", "systematically reported as normal flow (a confident "
+                            "false negative, not an uncertain one)")
+    if acc_reflux <= 0.40:
+        return ("mostly inverted", "usually reported as normal flow")
+    if acc_reflux <= 0.60:
+        return ("at chance", "no better than a coin flip")
+    if acc_reflux <= 0.85:
+        return ("partial", "detected more often than not")
+    return ("detected", "reliably detected")
+
+
 def img(path, cap, width=680):
     if not os.path.exists(path):
         return ""

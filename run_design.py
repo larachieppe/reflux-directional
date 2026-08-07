@@ -30,6 +30,7 @@ from multiprocessing import Pool
 
 import eit3d
 import directional_sim as ds
+import analyze_subjects as asub
 
 # ---- the locked design -----------------------------------------------------
 N_STRIP = 6
@@ -45,7 +46,11 @@ N_SUBJ = 110       # subjects in study C
 K_EVENTS = 6       # events observed per subject
 SUBJ_MOTION = 0.45
 
-_W = {}
+_W = {}                         # per-process world cache
+# BOUNDED. Each StripWorld holds a full CEM3D solver (per-electrode mass matrices
+# for up to 24 electrodes). Caching every (count, span) combination per worker
+# exhausted an 8 GB machine and drove it into swap, collapsing throughput ~4x.
+_WORLD_CACHE_MAX = 2
 
 
 def _init():
@@ -158,7 +163,7 @@ def main():
     print(f"[design] {len(jobs)} trials  (N={N_STRIP}, span={SPAN} cm, SNR={SNR} dB)",
           flush=True)
 
-    nproc = max(1, min(6, (os.cpu_count() or 4) - 2))
+    nproc = max(1, min(4, (os.cpu_count() or 4) - 2))
     recs = []
     with Pool(nproc, initializer=_init) as pool:
         for k, r in enumerate(pool.imap_unordered(_run_one, jobs, chunksize=4)):
@@ -217,13 +222,14 @@ def main():
     mid = MOTION[len(MOTION) // 2]
     sub = [r for r in recs if r["mode"] == "op" and r["motion"] == mid]
     y, sc = _oof(sub)
-    thr = float(np.median(sc))
-    conf = {}
-    for r, p in zip(sub, sc):
-        pred = "reflux" if p >= thr else ("antegrade" if r["dir"] < 0 else "not-reflux")
-        conf.setdefault(r["label"], {}).setdefault(pred, 0)
-        conf[r["label"]][pred] += 1
-    out["confusion"] = {"motion": mid, "counts": conf}
+    # Threshold at 90% specificity on the negatives, and SAY SO. The median
+    # forces a 50% predicted-positive rate against 25% prevalence, which caps
+    # specificity at 66.7% by construction no matter how good the model is.
+    neg = np.sort(sc[y == 0]) if (y == 0).any() else np.array([0.5])
+    thr = float(neg[min(int(0.90 * len(neg)), len(neg) - 1)])
+    cf = asub.confusion_at_threshold(sub, sc, thr, "90% specificity on negatives")
+    cf["motion"] = mid
+    out["confusion"] = cf
 
     # feature ablation at the design motion
     eidx = [i for i, nm in enumerate(ds.FEATURE_NAMES) if "energy" in nm]
@@ -245,34 +251,25 @@ def main():
     out["grade"] = gr
 
     # ---------------- C. subject-level multi-event ----------------
+    # Uses analyze_subjects.subject_analysis so the run NATIVELY produces the
+    # corrected schema. Previously this block emitted a pooled "empirical_k_of_K"
+    # that mixed healthy and refluxing children, and the corrected sens/spec
+    # schema only existed because a repair script patched the file afterwards.
+    # That meant a fresh run wrote metrics the figures and pages could not read.
     subs = {}
     for r in recs:
         if r["mode"] == "subject":
             subs.setdefault(r["subj"], []).append(r)
-    per_event, per_subject = [], []
+    per_subject = []
     for c, evs in sorted(subs.items()):
         evs = sorted(evs, key=lambda r: r["i"])
         hits = [int(r["dir"] == r["want"]) for r in evs]
-        per_event += hits
         per_subject.append(dict(subj=c, label=evs[0]["label"], grade=evs[0]["grade"],
-                                hits=hits, n_hit=int(sum(hits))))
-    pe = float(np.mean(per_event)) if per_event else float("nan")
-    # k-of-K detection measured EMPIRICALLY, versus what independence would predict
-    emp, ind = {}, {}
-    for kk in range(1, K_EVENTS + 1):
-        emp[str(kk)] = float(np.mean([s["n_hit"] >= kk for s in per_subject]))
-        ind[str(kk)] = float(sum(
-            math.comb(K_EVENTS, j) * pe ** j * (1 - pe) ** (K_EVENTS - j)
-            for j in range(kk, K_EVENTS + 1))) if pe == pe else float("nan")
-    hits_hist = [0] * (K_EVENTS + 1)
-    for s in per_subject:
-        hits_hist[s["n_hit"]] += 1
-    out["subject"] = dict(per_event=pe, n_subjects=len(per_subject),
-                          k_events=K_EVENTS, motion=SUBJ_MOTION,
-                          empirical_k_of_K=emp, independent_k_of_K=ind,
-                          hits_hist=hits_hist,
-                          per_subject=[{k: s[k] for k in ("subj", "label", "grade", "n_hit")}
-                                       for s in per_subject])
+                                n_hit=int(sum(hits))))
+    sa = asub.subject_analysis(per_subject, K_EVENTS)
+    sa.update(n_subjects=len(per_subject), motion=SUBJ_MOTION,
+              per_subject=per_subject)
+    out["subject"] = sa
 
     out["runtime_min"] = (time.time() - t0) / 60.0
     with open("metrics_design.json", "w") as f:

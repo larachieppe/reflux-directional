@@ -40,6 +40,10 @@ N_AUC = 64                      # 4-class trials per count, for AUC + ablation
 N_SEC = 32                      # per cell, secondary sweeps
 
 _W = {}                         # per-process world cache
+# BOUNDED. Each StripWorld holds a full CEM3D solver (per-electrode mass matrices
+# for up to 24 electrodes). Caching every (count, span) combination per worker
+# exhausted an 8 GB machine and drove it into swap, collapsing throughput ~4x.
+_WORLD_CACHE_MAX = 2
 
 
 def _init():
@@ -50,6 +54,8 @@ def _init():
 def _world(n, span):
     key = (n, round(span, 3))
     if key not in _W:
+        if len(_W) >= _WORLD_CACHE_MAX:
+            _W.pop(next(iter(_W)))          # evict oldest
         _W[key] = ds.StripWorld(n, span=span, mesh=_MESH)
     return _W[key]
 
@@ -197,6 +203,9 @@ def main():
     for sp in SPANS:                                    # span, at N=8
         for i in range(N_SEC):
             jobs.append((8, sp, 0.6, 60, 400_000 + i, "span", None))
+    # Order jobs so each worker sees long runs of the same world, which keeps the
+    # bounded cache hitting instead of rebuilding a CEM3D on every chunk.
+    jobs.sort(key=lambda j: (j[0], j[1]))
     print(f"[run] {len(jobs)} trials", flush=True)
 
     nproc = int(os.environ.get('NPROC', '4'))
