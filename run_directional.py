@@ -131,6 +131,10 @@ def summarize(recs):
     dir_ok = [r["dir"] == r["want"] for r in trav]
     refl = [r for r in recs if r["label"] == "reflux"]
     undec = float(np.mean([r["dir"] == 0 for r in trav])) if trav else float("nan")
+    # With an abstain gate, "no call" is not the same as a wrong call. Report
+    # both: accuracy counting abstention as a miss (conservative, the headline),
+    # and accuracy among trials where a call was actually made.
+    decided = [r for r in trav if r["dir"] != 0]
     # A cell where EVERY trial is undecidable is not 0% accurate, it is undefined:
     # with one zone there is no ordering to read, so no answer exists to be wrong.
     acc = float(np.mean(dir_ok)) if dir_ok else float("nan")
@@ -139,6 +143,10 @@ def summarize(recs):
     out = dict(
         n_trials=len(recs),
         dir_acc=acc,
+        dir_acc_decided=(float(np.mean([r["dir"] == r["want"] for r in decided]))
+                         if decided else float("nan")),
+        n_decided=len(decided),
+        abstain_rate=(1.0 - len(decided) / len(trav)) if trav else float("nan"),
         dir_n=len(trav),
         undecidable=undec,
         lat_acc=float(np.mean([r["lat_ok"] for r in refl])) if refl else float("nan"),
@@ -176,9 +184,13 @@ def main():
         for m in (0.0,):
             for i in range(N_GRADE):
                 jobs.append((8, SPAN, m, 60, 100_000 + g * 1000 + i, "grade", g))
+    # AUC must be measured at each motion level. Previously one 4-class cell at
+    # motion 0.3 was computed and written into EVERY motion key, so every
+    # published motion-resolved AUC was the same number repeated.
     for n in COUNTS:                                    # AUC + ablation, 4 classes
-        for i in range(N_AUC):
-            jobs.append((n, SPAN, 0.3, 60, 200_000 + i, "auc", None))
+        for m in MOTION:
+            for i in range(N_AUC):
+                jobs.append((n, SPAN, m, 60, 200_000 + i, "auc", None))
     for snr in SNRS:                                    # SNR, at N=8
         for i in range(N_SEC):
             jobs.append((8, SPAN, 0.6, snr, 300_000 + i, "snr", None))
@@ -212,7 +224,7 @@ def main():
         for m in MOTION:
             sub = sel(n=n, span=SPAN, motion=m, snr=60, mode="primary")
             s = summarize(sub)
-            a = sel(n=n, span=SPAN, motion=0.3, snr=60, mode="auc")
+            a = sel(n=n, span=SPAN, motion=m, snr=60, mode="auc")
             s["auc"] = _fit_auc(a)
             eidx = [i for i, nm in enumerate(ds.FEATURE_NAMES) if "energy" in nm]
             didx = [i for i, nm in enumerate(ds.FEATURE_NAMES)

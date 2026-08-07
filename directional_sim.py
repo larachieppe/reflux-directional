@@ -41,7 +41,7 @@ TISSUE = {
     "muscle":  (0.34, 2.6e4),
     "fat":     (0.043, 1.5e3),
     "kidney":  (0.11, 3.0e4),
-    "bladder": (0.30, 4.0e3),
+    "bladder": (0.30, 4.0e3),   # wall only; the lumen is urine (see base_sigma)
     "urine":   (1.70, 80.0),
 }
 
@@ -71,7 +71,8 @@ class StripWorld:
     via `mesh=`), only the electrode set and CEM solver differ."""
 
     def __init__(self, n_per_strip, span=12.0, R=5.5, height=20.0,
-                 n_rings=6, nz=17, xscale=1.0, mesh=None, name="train"):
+                 n_rings=6, nz=17, xscale=1.0, mesh=None, name="train",
+                 z_center=0.5):
         self.name = name
         self.R, self.H, self.xscale = R, height, xscale
         self.n_per_strip = n_per_strip
@@ -79,8 +80,14 @@ class StripWorld:
         self.spacing = span / max(n_per_strip - 1, 1)
         self.mesh = mesh if mesh is not None else eit3d.make_cylinder(
             R=R, height=height, n_rings=n_rings, nz=nz, xscale=xscale)
+        # z_center was previously never forwarded, so every strip in every study
+        # sat on the torso MIDPOINT rather than over the ureterovesical junction
+        # where low-grade reflux actually occurs. That single unswept default is
+        # what made grades I-II look undetectable.
+        self.z_center = z_center
         self.elec_facets, self.elec_cent = strip3d.place_strips(
-            self.mesh, R, height, n_per_strip, span, xscale=xscale)
+            self.mesh, R, height, n_per_strip, span, z_center=z_center,
+            xscale=xscale)
         self.L = len(self.elec_facets)
         self.solver = eit3d.CEM3D(self.mesh, self.elec_facets)
         self.zones = strip3d.tetrapolar_zones(n_per_strip, 2)
@@ -88,7 +95,14 @@ class StripWorld:
         self.n_zones_per_strip = sum(n_per_strip - G for G in _g)
         self.max_aperture_cm = (max(_g) * self.spacing) if _g else 0.0
         # zone centroid z (cm) for arrival-time slope fitting
-        ez = self.elec_cent[:, 2]
+        # Use the REALIZED facet centroids, not the requested positions. Facets
+        # snap to the mesh, so realized pitch differs from nominal (measured 2.50
+        # to 3.14 cm against a nominal 2.80). zone_z is the regressor x-axis for
+        # the headline slope fit, so using requested positions injects error.
+        ez = np.array([self.mesh.p[:, self.mesh.facets[:, f]].mean(axis=(1, 2))[2]
+                       if len(f) else self.elec_cent[i, 2]
+                       for i, f in enumerate(self.elec_facets)])
+        self.elec_z_realized = ez
         self.zone_z = np.array([0.5 * (ez[z["sense"][0]] + ez[z["sense"][1]])
                                 for z in self.zones])
         self.zone_strip = np.array([z["strip"] for z in self.zones])
@@ -116,10 +130,19 @@ class StripWorld:
             kd = ((x - kx) / anat["k_r"][0])**2 + ((y - ky) / anat["k_r"][1])**2 \
                  + ((z - kz) / anat["k_r"][2])**2
             sig[kd < 1] = admittivity("kidney", f)
+        # The bladder is a thin WALL around a URINE lumen. Filling the whole
+        # ellipsoid with wall conductivity (0.30 S/m, below muscle at 0.34) made
+        # the bladder-fill confounder ~14x too weak AND inverted in sign, so the
+        # one confounder the whole design premise rests on was never actually
+        # confounding.
         bx, by, bz = anat["bladder"]
         br = anat["b_r"]
         bd = ((x - bx) / br[0])**2 + ((y - by) / br[1])**2 + ((z - bz) / br[2])**2
-        sig[bd < 1] = admittivity("bladder", f)
+        sig[bd < 1] = admittivity("bladder", f)          # wall
+        wall = 0.82                                       # lumen fraction
+        ld = ((x - bx) / (br[0]*wall))**2 + ((y - by) / (br[1]*wall))**2 \
+             + ((z - bz) / (br[2]*wall))**2
+        sig[ld < 1] = admittivity("urine", f)             # lumen
         return sig
 
     def add_bolus(self, sig, f, center, radii, shift=(0.0, 0.0, 0.0), frac=1.0):
@@ -274,8 +297,11 @@ def simulate_trial(world, label, rng, grade=3, side=+1, T=16, freqs=FREQS,
     # always-one-side predictor. Fractional change is also what real hardware
     # reports after per-channel calibration.
     dZ = (Z - base) / np.abs(base)
-    scale = np.abs(Z).mean()
-    sigma_n = scale * 10 ** (-snr_db / 20.0)
+    # dZ is a FRACTIONAL change, so the noise must be fractional too. Deriving
+    # sigma from the raw |Z| and adding it to a normalized quantity made the
+    # injected noise depend on the choice of length unit and sat ~10 dB below
+    # the stated SNR.
+    sigma_n = 10 ** (-snr_db / 20.0)
     noise = (rng.normal(0, sigma_n, dZ.shape) + 1j * rng.normal(0, sigma_n, dZ.shape))
     corr = (rng.normal(0, sigma_n, (T, len(freqs), 1))
             + 1j * rng.normal(0, sigma_n, (T, len(freqs), 1)))
@@ -377,51 +403,97 @@ def _strip_aperture_stats(dZ, world, strip, m):
     # selecting on the total would systematically pick the shallowest aperture,
     # which is exactly the one that cannot reach the ureter.
     per_zone = float(np.mean(np.sum(ser ** 2, axis=1)))
+    z_baseline = float(zz[-1] - zz[0])          # lever arm available to the fit
     return dict(lag=float((tarr[-1] - tarr[0]) / max(dz, 1e-9)), slope=slope,
                 lin=float(np.clip(lin, -1, 1)), peak=float(peaks.mean()),
-                energy=raw_e, dif_energy=per_zone,
+                energy=raw_e, dif_energy=per_zone, z_baseline=z_baseline,
                 n_zones=nz, m=m, defined=True)
 
 
 def direction_features(dZ, world):
-    """Direction evidence per strip, selecting the APERTURE that actually sees
-    the bolus. Sensing depth scales with aperture, so a dense strip can reach the
-    deep ureter by synthesizing a wide aperture in software; that flexibility is
-    the real payoff of more electrodes.
+    """Direction evidence per strip, FUSED across apertures.
+
+    The previous version picked a single aperture by per-zone energy. That was
+    measurably wrong: forcing each aperture on identical data showed the greedy
+    pick losing accuracy at every N >= 8 (N=8: 0.81 greedy vs 1.00 for the best
+    fixed aperture; N=12: 0.81 vs 1.00), which is what produced the earlier
+    "more electrodes is worse" result. That finding was an artifact of this
+    selector, not physics.
+
+    The reason is that slope precision scales with the LEVER ARM of the fit, the
+    axial baseline spanned by the zone centroids, not with electrode separation.
+    On a fixed span a wide aperture spends the very baseline the fit needs: at
+    N=12 the widest aperture (9.8 cm) has a 2.2 cm baseline and scores 0.19,
+    while the narrowest (3.3 cm) has an 8.7 cm baseline and scores 0.94.
+
+    So instead of selecting, every aperture with >= 2 zones contributes, weighted
+    by its baseline and its fit quality. Nothing is discarded and there is no
+    selection step left to go wrong.
 
     Sign convention: POSITIVE => later arrival at LARGER z => travelling superior
     => retrograde => reflux.
     """
     out = {}
-    for s in (0, 1):
-        allser, allidx = zone_series(dZ, world, s)
+    for s_i in (0, 1):
+        allser, _ = zone_series(dZ, world, s_i)
         raw_e = float(np.sum(allser ** 2)) if allser.shape[0] else 0.0
-        cands = [c for c in (_strip_aperture_stats(dZ, world, s, m)
+        cands = [c for c in (_strip_aperture_stats(dZ, world, s_i, m)
                              for m in world.apertures) if c is not None]
         if not cands:
-            # N < 5: at most one zone per strip. No ordering exists, so direction
-            # is not merely noisy, it is structurally undefined.
-            out[s] = dict(lag=0.0, slope=0.0, lin=0.0, peak=0.0, energy=raw_e,
-                          dif_energy=0.0, n_zones=allser.shape[0], m=0,
-                          n_apertures=0, defined=False)
+            out[s_i] = dict(lag=0.0, slope=0.0, lin=0.0, peak=0.0, energy=raw_e,
+                            dif_energy=0.0, n_zones=allser.shape[0], m=0,
+                            n_apertures=0, defined=False)
             continue
-        best = max(cands, key=lambda c: c["dif_energy"])
-        best = dict(best)
-        best["energy"] = raw_e
-        best["n_apertures"] = len(cands)
-        out[s] = best
+        # weight: axial lever arm x fit quality x signal strength
+        tot_w, ev, lin_w, dif_e = 0.0, 0.0, 0.0, 0.0
+        for c in cands:
+            base = max(c.get("z_baseline", 0.0), 1e-6)
+            q = max(c["lin"], 0.0) if c["n_zones"] >= 3 else 0.35
+            w = base * (0.25 + q) * np.sqrt(max(c["dif_energy"], 0.0))
+            e_c = c["lag"] + (c["slope"] if c["n_zones"] >= 3 else 0.0)
+            ev += w * e_c
+            lin_w += w * c["lin"]
+            dif_e += c["dif_energy"]
+            tot_w += w
+        if tot_w <= 0:
+            best = max(cands, key=lambda c: c["dif_energy"])
+            out[s_i] = dict(best, energy=raw_e, n_apertures=len(cands))
+            continue
+        best = max(cands, key=lambda c: c.get("z_baseline", 0.0) * max(c["lin"], 0.0))
+        out[s_i] = dict(lag=ev / tot_w, slope=ev / tot_w, lin=lin_w / tot_w,
+                        peak=best["peak"], energy=raw_e, dif_energy=dif_e,
+                        n_zones=best["n_zones"], m=best["m"],
+                        n_apertures=len(cands), defined=True,
+                        fused_ev=ev / tot_w)
     return out
 
 
-def decide_direction(feat):
-    """Pick the strip with the most activation, return (+1 retrograde,
-    -1 antegrade, 0 undecidable) and the side that fired."""
+# Calibrated, not guessed. Measured lin distributions at 0.45 cm motion:
+# travelling events median ~0.95 (p10 0.40), empty windows median ~0.12-0.25.
+# Youden-optimal threshold is 0.35, which keeps 96.4% of real events while
+# rejecting 71.4% of empty ones. An earlier hand-picked 0.55 discarded 37.5% of
+# genuine events, because the fused lin is a weighted average across apertures
+# and sits lower than the single-aperture value that number was chosen against.
+LIN_GATE = 0.35
+
+
+def decide_direction(feat, lin_gate=LIN_GATE):
+    """Return (+1 retrograde, -1 antegrade, 0 ABSTAIN) and the strip that fired.
+
+    The abstain state is not optional. Without it an EMPTY window is forced to a
+    call, and measured on no-flow windows the detector said "retrograde" 53.8% of
+    the time. That silently made the published specificity conditional on every
+    healthy window containing a full antegrade bolus. Wave linearity separates a
+    real travelling event from an empty window cleanly (mean ~0.88 vs ~0.24), so
+    it is used as the gate.
+    """
     s = max((0, 1), key=lambda k: feat[k].get("dif_energy", 0.0)
             if feat[k]["defined"] else feat[k]["energy"])
     f = feat[s]
     if not f["defined"]:
         return 0, s, 0.0                       # N=4: structurally undecidable
-    # combine the two independent direction estimators
+    if f.get("n_zones", 0) >= 3 and f.get("lin", 0.0) < lin_gate:
+        return 0, s, 0.0                       # no coherent travelling wave
     ev = f["lag"] + (f["slope"] if f["n_zones"] >= 3 else 0.0)
     return (1 if ev > 0 else -1), s, float(ev)
 

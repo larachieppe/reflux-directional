@@ -183,6 +183,9 @@ def main():
         trav = [r for r in sub if r["want"] != 0]
         refl = [r for r in sub if r["label"] == "reflux"]
         dacc = float(np.mean([r["dir"] == r["want"] for r in trav])) if trav else float("nan")
+        dec = [r for r in trav if r["dir"] != 0]
+        dacc_dec = float(np.mean([r["dir"] == r["want"] for r in dec])) if dec else float("nan")
+        abst = (1.0 - len(dec) / len(trav)) if trav else float("nan")
         # operating points at fixed specificity
         ops = {}
         for spec_t in (0.80, 0.85, 0.90, 0.95):
@@ -190,8 +193,16 @@ def main():
             if len(neg):
                 thr = neg[min(int(spec_t * len(neg)), len(neg) - 1)]
                 ops[str(spec_t)] = float(np.mean(sc[y == 1] >= thr))
+        # empty-window behaviour: with an abstain gate these should mostly abstain
+        empt = [r for r in sub if r["label"] in ("noflow", "bladder")]
         op[str(m)] = dict(auc=_auc(y, sc), roc_fpr=fpr, roc_tpr=tpr,
                           dir_acc=dacc, dir_n=len(trav),
+                          dir_acc_decided=dacc_dec, n_decided=len(dec),
+                          abstain_rate=abst,
+                          empty_abstain=(float(np.mean([r["dir"] == 0 for r in empt]))
+                                         if empt else float("nan")),
+                          empty_called_retro=(float(np.mean([r["dir"] > 0 for r in empt]))
+                                              if empt else float("nan")),
                           dir_ci=wilson(dacc, len(trav)),
                           lat_acc=float(np.mean([r["lat_ok"] for r in refl])) if refl else float("nan"),
                           lat_n=len(refl), sens_at_spec=ops,

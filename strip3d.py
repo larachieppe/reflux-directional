@@ -23,7 +23,7 @@ import eit3d
 
 
 def place_strips(mesh, R, height, n_per_strip, span, z_center=0.5,
-                 strip_phis=(0.0, np.pi), arc_half=0.30, band=0.030, xscale=1.0):
+                 strip_phis=(0.0, np.pi), arc_half=0.30, band=None, xscale=1.0):
     """N electrodes per strip, equally spaced over a FIXED span (cm), at constant
     angle, varying z. Fixing the span and varying N is the honest engineering
     question: given the flank length anatomy allows, how densely populate it?"""
@@ -35,20 +35,37 @@ def place_strips(mesh, R, height, n_per_strip, span, z_center=0.5,
     lateral = rad > 0.80 * R
     elecs, cents = [], []
     dz = span / max(n_per_strip - 1, 1)
+    # The z acceptance window must scale with pitch. A fixed 0.6 cm half-height
+    # exceeded the half-pitch once N reached 12 on a 12 cm span, so adjacent
+    # electrodes claimed the SAME boundary facets and were welded together in the
+    # CEM assembly (44 shared facets measured at N=12). Two physical electrodes
+    # cannot occupy one patch of skin, so that array was not realizable.
+    half = 0.40 * dz if band is None else band * height
     z0 = z_center * height - span / 2.0
     for phi in strip_phis:
         for k in range(n_per_strip):
             zabs = z0 + k * dz
             da = np.angle(np.exp(1j * (ang - phi)))
-            sel = lateral & (np.abs(da) < arc_half) & (np.abs(z - zabs) < band * height)
+            sel = lateral & (np.abs(da) < arc_half) & (np.abs(z - zabs) < half)
             if sel.sum() == 0:
-                sel = lateral & (np.abs(da) < arc_half * 1.7) & (np.abs(z - zabs) < band * 2.2 * height)
+                sel = lateral & (np.abs(da) < arc_half * 1.7) & (np.abs(z - zabs) < half * 1.8)
             if sel.sum() == 0:                       # last resort: nearest facet
                 d2 = (np.angle(np.exp(1j * (ang - phi))))**2 + ((z - zabs) / height)**2
                 d2[~lateral] = 1e9
                 sel = np.zeros_like(lateral); sel[np.argmin(d2)] = True
             elecs.append(bf[sel])
             cents.append([R * np.cos(phi), R * np.sin(phi), zabs])
+    # Reject any layout whose electrodes physically overlap, rather than silently
+    # producing a shorted array.
+    seen = {}
+    for i, f in enumerate(elecs):
+        for fac in f.tolist():
+            if fac in seen:
+                raise ValueError(
+                    f"electrodes {seen[fac]} and {i} share boundary facet {fac}: "
+                    f"N={n_per_strip}, span={span} produces physically "
+                    f"overlapping electrodes (pitch {dz:.2f} cm)")
+            seen[fac] = i
     return elecs, np.array(cents)
 
 
