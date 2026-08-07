@@ -13,3 +13,12 @@ centroids its bolus actually crosses. Reflux-only detection, still:
 {{fig:figs_place/p2_mechanism.png|The mechanism: a bolus crossing fewer than about three zone centroids cannot support a slope fit or common-mode rejection.}}
 
 {{methods:placement}}
+
+> [!WARN]
+> **The accuracies in this table are reflux-only.** `reflux_acc` counts reflux trials and nothing
+> else, so a detector that answers "reflux" every time scores 100% on it. That is not hypothetical
+> here: the placement this rule originally selected, 10 cm @ z=0.28, scores 87.5% one-sided but
+> **37.5% on antegrade trials** &mdash; below chance on healthy children &mdash; for a balanced
+> accuracy of 62.5%, fifth of ten. On balanced accuracy the optimum is **12 cm @ z=0.36** (74.1%,
+> with 78.6% on antegrade). The selector now scores both classes; the table above is retained as
+> published and should be read alongside the balanced ranking.

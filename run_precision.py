@@ -36,8 +36,20 @@ SIGMAS = (0.0, 0.5, 1.0, 2.0)      # cm, std dev of placement error
 # compared on the same rule. best_k is still reported, but it is selected by
 # max Youden on the very children it is scored on and is therefore optimistic.
 PRESPEC_K = 2
-# the low-grade optimum, and a longer strip that trades peak accuracy for margin
-CONFIGS = [(10.0, 0.34, "short, over the UVJ"),
+# The low-grade optimum, and the long mid-torso strip it is being compared
+# against. The optimum is READ FROM metrics_placement.json rather than hard-coded,
+# the way run_tolerance already does it, so this study cannot silently keep
+# testing a placement that Study 3 has superseded. It twice did: it was pinned to
+# 10 cm @ z=0.34 through both the defect-16 and defect-27 corrections.
+def _best_placement():
+    try:
+        b = json.load(open("metrics_placement.json"))["best_low_grade"]
+        return (float(b["span"]), float(b["z_center"]), "best low-grade placement")
+    except Exception:
+        return (10.0, 0.34, "fallback: metrics_placement.json unreadable")
+
+
+CONFIGS = [_best_placement(),
            (16.0, 0.50, "long, mid-torso")]
 
 # Largest axial offset EVERY config can physically accommodate. Clipping both

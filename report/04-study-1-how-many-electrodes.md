@@ -43,12 +43,23 @@ itself, scored as signed evidence with **no model fitted at all**. It puts N = 4
 > counts, 0.852 to 0.979, **fits inside a single cell's confidence interval**. No electrode count
 > was ever distinguishable from another on AUC.
 >
-> The same small-sample weakness explains N = 4 at motion 0.9 reading **0.260** &mdash;
-> significantly *below* chance even at this precision. An out-of-fold AUC that low is not
-> uninformative noise, it is a model that inverts out of sample.
+> N = 4 at motion 0.9 reads **0.260**. Its interval, [0.13, 0.39], lies wholly below 0.5, so on
+> its face this is a model that inverts out of sample rather than one that is merely uninformative.
+> Two caveats keep that from being a firm conclusion: with 16 positives a single cell is very
+> imprecise, and `_auc` mishandles ties &mdash; fully tied scores return 0.625 rather than 0.5 &mdash;
+> while at N = 4 the direction features are identically zero for every trial. The honest reading is
+> that this cell is uninterpretable, not that inversion is established.
 
 Read on the direction rule instead, the ordering is what the rest of the study already said:
 N &ge; 8 sits near 0.90 when still and degrades gracefully, N = 4 is chance by construction, and
 N = 5 scores well only because it can never abstain.
+
+> [!NOTE]
+> **The laterality column overstates what the device delivers.** `lat_acc` scores
+> `(strip == 0) == (side > 0)` on every reflux trial, whether or not a direction was reported: a
+> strip is always selected, by energy, even when the estimator abstains. N = 4 abstains on 100% of
+> trials and still reads 100% laterality. It is therefore an amplitude statistic about which flank
+> carries more signal, not a statement about an output the device would actually emit, and it
+> should not be read as "the device localises correctly x% of the time".
 
 {{methods:electrode-count}}

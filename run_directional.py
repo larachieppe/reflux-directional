@@ -15,10 +15,20 @@ import json, os, sys, time
 import numpy as np
 from multiprocessing import Pool
 
+import inspect
+
 import eit3d
 import directional_sim as ds
 
-ds.FREQS = ds.FREQS[:1]        # 50 kHz only: halves solves; direction is a timing measurement
+# DEFECT 32. This line used to read `ds.FREQS = ds.FREQS[:1]`, commented "50 kHz
+# only: halves solves". It was a NO-OP. `simulate_trial(..., freqs=FREQS)` binds
+# its default at DEFINITION time, so rebinding the module attribute afterwards
+# never reached the solver: this study has always run at BOTH 50 and 100 kHz,
+# took twice the compute the comment claimed to save, and then recorded
+# freqs=[50000.0] in its own config -- a figure that was simply false, and one
+# the report quoted. The frequencies are left as they actually are and the config
+# now records what the solver actually used.
+FREQS_USED = list(inspect.signature(ds.simulate_trial).parameters["freqs"].default)
 
 SPAN = 12.0                     # cm of usable flank (anatomy-capped)
 COUNTS = [4, 5, 6, 8, 10, 12]   # electrodes per strip
@@ -223,7 +233,7 @@ def main():
 
     out = {"config": dict(span=SPAN, counts=COUNTS, motion=MOTION, snrs=SNRS,
                           spans=SPANS, T=T, n_trial=N_TRIAL, n_grade=N_GRADE,
-                          n_auc=N_AUC, n_sec=N_SEC, freqs=list(ds.FREQS),
+                          n_auc=N_AUC, n_sec=N_SEC, freqs=FREQS_USED,
                           feature_names=ds.FEATURE_NAMES,
                           primary_grades=[3, 4, 5], auc_n=8)}
 
