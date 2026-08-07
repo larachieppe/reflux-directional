@@ -185,6 +185,14 @@ HTML = f"""<!doctype html>
  img{{max-width:100%;border:1px solid #ddd}} .sub{{color:#555;font-size:10pt}}
 {bm.CSS}
 {bt.CSS}
+ .toc{{border:1px solid #ccd6da;background:#fbfcfd;padding:14px 20px;margin:22px 0;
+  border-radius:5px;font-size:10pt;column-count:2;column-gap:28px}}
+ .toc ul{{margin:8px 0 0 0;padding:0;list-style:none}}
+ .toc li{{margin:2px 0;break-inside:avoid}}
+ .toc li.t3{{padding-left:16px;font-size:9.5pt;color:#555}}
+ .toc a{{color:#1155cc;text-decoration:none}} .toc a:hover{{text-decoration:underline}}
+ h2[id],h3[id]{{scroll-margin-top:12px}}
+ @media(max-width:700px){{.toc{{column-count:1}}}}
  .methods table.mm-t th,.methods table.mm-t td{{text-align:left}}
  .techsec table.mm-t th,.techsec table.mm-t td{{text-align:left;border:1px solid #d7e0e4}}
 </style></head><body>
@@ -578,5 +586,39 @@ decide the product and neither can be settled by more simulation.</div>
 
 </body></html>"""
 
+# ---------------------------------------------------------------- navigation
+# The report is now ~1.6 MB across 13 sections and 20-odd subsections. Without
+# anchors it can only be read by scrolling, which is not a realistic way to use
+# it in a review. Ids and the contents list are generated from the headings
+# themselves so they cannot fall out of step with the document.
+import re as _re
+
+
+def _slug(n):
+    return "s" + n.replace(".", "_")
+
+
+def _anchor(m):
+    lvl, num, rest = m.group(1), m.group(2), m.group(3)
+    return f'<h{lvl} id="{_slug(num)}">{num}{rest}</h{lvl}>'
+
+
+HTML = _re.sub(r'<h([23])>(\d+(?:\.\d+)?)((?:\.|&nbsp;)[^<]*)</h\1>', _anchor, HTML)
+
+_toc = []
+for _m in _re.finditer(r'<h([23]) id="([^"]+)">(\d+(?:\.\d+)?)((?:\.|&nbsp;)[^<]*)</h\1>', HTML):
+    _lvl, _id, _num, _rest = _m.groups()
+    _title = _re.sub(r"&mdash;.*$", "", _rest.lstrip(". ").replace("&nbsp;", "")).strip()
+    _cls = "t2" if _lvl == "2" else "t3"
+    _toc.append(f'<li class="{_cls}"><a href="#{_id}"><b>{_num}</b> {_title}</a></li>')
+
+HTML = HTML.replace("<!--TOC-->", f"""
+<div class="toc"><b>Contents</b><ul>{''.join(_toc)}</ul></div>""")
+
+# cross-references like &sect;9 become links to the section they name
+HTML = _re.sub(r'&sect;(\d+(?:\.\d+)?)',
+               lambda m: f'<a href="#{_slug(m.group(1))}">&sect;{m.group(1)}</a>', HTML)
+
 open("FULL_REPORT.html", "w").write(HTML)
-print(f"wrote FULL_REPORT.html ({len(HTML)//1024} KB)")
+print(f"wrote FULL_REPORT.html ({len(HTML)//1024} KB, "
+      f"{len(_toc)} headings linked)")
