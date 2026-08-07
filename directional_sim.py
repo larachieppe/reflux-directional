@@ -257,6 +257,28 @@ def bolus_path(world, anat, label, grade, side, T):
     meaningful relative lag, so an envelope would erase the very travelling-wave
     signature the device is built to read. The bolus instead starts outside the
     sensed span and exits the far side, so each zone lights up as it passes.
+
+    DEFECT 31, FIXED: grade used to change bolus SPEED as well as bolus size.
+
+    Every path was traversed in exactly T frames regardless of its length, and
+    the reflux path length depends on grade through `reach`. A grade-I bolus
+    therefore covered 7.2 cm in the same 20 frames that a grade-V bolus used for
+    16.8 cm -- a 2.33x velocity difference. Since the estimator's whole output is
+    an arrival-time slope, and slope is inversely proportional to velocity, the
+    "grade" variable was confounded with the very quantity being measured. Every
+    per-grade result therefore mixed "smaller bolus" with "slower bolus", and
+    "low grades are hard" could not be separated from "slow boluses are hard".
+
+    Worse, the ANTEGRADE path ignored grade entirely and always ran the full
+    16.8 cm at full speed. So at grade I a "reflux" trial was a short slow bolus
+    while its matched "antegrade" trial was a long fast one: the two classes
+    differed in extent and speed, not only in direction, which is precisely the
+    confound the design exists to avoid.
+
+    Both are fixed by holding VELOCITY fixed and letting grade set how far the
+    bolus gets, which is also the physical picture: refluxed urine does not move
+    more slowly, it simply does not travel as far. The bolus advances at the
+    reference speed and then stops at its terminus for the remaining frames.
     """
     H = world.H
     z_b, z_k = anat["bladder"][2], anat["z_kidney"]
@@ -266,10 +288,18 @@ def bolus_path(world, anat, label, grade, side, T):
     cs = np.zeros((T, 3))
     frac = np.zeros(T)
     tt = np.linspace(0.0, 1.0, T)
+    # reference speed: the full kidney-to-bladder traverse in T frames, the same
+    # for every grade and both directions
+    full = abs((z_k + margin) - (z_b - margin))
+    v_ref = full / max(T - 1, 1)
     if label == "reflux":                   # bladder -> kidney (retrograde, up)
         z0 = z_b - margin
         z1 = z_b + (z_k - z_b) * reach + margin
-        zs = z0 + (z1 - z0) * tt
+        span_z = abs(z1 - z0)
+        n_move = min(T, int(np.ceil(span_z / max(v_ref, 1e-9))) + 1)
+        zs = np.full(T, z1)
+        zs[:n_move] = z0 + np.sign(z1 - z0) * v_ref * np.arange(n_move)
+        zs[:n_move] = np.clip(zs[:n_move], min(z0, z1), max(z0, z1))
         frac[:] = 1.0
     elif label == "antegrade":              # kidney -> bladder (normal, down)
         z1 = z_b - margin

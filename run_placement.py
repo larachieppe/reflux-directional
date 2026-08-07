@@ -166,11 +166,20 @@ def main():
     # and holds 78.6% under the same motion. That single line propagated into
     # Study 4 (which centred its offsets on it) and Study 5 (which adopted it as
     # the short-strip arm).
+    # DEFECT 27, FIXED, and it is the more serious of the two. The score used
+    # `reflux_acc`, which counts REFLUX TRIALS ONLY. That metric is one-sided: a
+    # detector that answers "reflux" every single time scores 100% on it while
+    # being useless. The rule therefore rewarded exactly the failure it should
+    # punish, and it did: the configuration it selected, 10 cm @ z=0.28, scores
+    # 87.5% one-sided but only 37.5% on antegrade trials -- well BELOW chance on
+    # healthy children -- for a balanced accuracy of 62.5%, fifth of ten. On
+    # balanced accuracy the optimum is 12 cm @ z=0.36 (74.1%, with 78.6% on
+    # antegrade). `dir_acc` scores both classes, so it cannot be gamed this way.
     def low_score(key):
         v = []
         for m in MOTION:                       # every motion level, not just 0.0
             for g in (1, 2):
-                x = grid[key].get(f"g{g}_m{m}", {}).get("reflux_acc", float("nan"))
+                x = grid[key].get(f"g{g}_m{m}", {}).get("dir_acc", float("nan"))
                 if x == x:
                     v.append(x)
         return sum(v) / len(v) if v else -1.0

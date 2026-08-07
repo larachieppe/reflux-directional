@@ -1442,17 +1442,27 @@
   }
  },
  "best_low_grade": {
-  "key": "10_0.28",
-  "score": 0.875,
-  "span": 10.0,
-  "z_center": 0.28,
-  "rule": "mean low-grade reflux accuracy across ALL motion levels",
-  "superseded": {
-   "key": "10_0.34",
-   "span": 10.0,
-   "z_center": 0.34,
-   "rule": "still arm only (defect)"
-  }
+  "key": "12_0.36",
+  "score": 0.7410714285714286,
+  "span": 12.0,
+  "z_center": 0.36,
+  "rule": "mean BALANCED low-grade direction accuracy (dir_acc) across all motion levels",
+  "superseded": [
+   {
+    "key": "10_0.34",
+    "span": 10.0,
+    "z_center": 0.34,
+    "rule": "still arm only (defect)"
+   },
+   {
+    "key": "10_0.28",
+    "span": 10.0,
+    "z_center": 0.28,
+    "rule": "one-sided reflux_acc across all motion (defect 27)",
+    "one_sided_score": 0.875,
+    "balanced_score": 0.625
+   }
+  ]
  },
  "runtime_min": 65.50549010038375
 }

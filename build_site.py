@@ -148,9 +148,23 @@ def zones_per_strip(n):
 
 
 def ci_str(n):
-    if n not in CI:
+    """Interval for the accuracy printed in the CELL IMMEDIATELY BEFORE this one.
+
+    DEFECT 28, FIXED. This used to return CI[n], the Wilson interval of
+    `combined(n)` -- a mean of direction AND laterality accuracy over the
+    in-tolerance motion levels {0.0, 0.3} -- while sitting in the table directly
+    after direction accuracy at the WORST motion level, 0.9 cm, under a header
+    reading "95% CI". The two are different statistics at different motion
+    levels, so not one of the five published intervals contained the number it
+    annotated. The N=8 row read, verbatim, "47%   95-100%". The denominator was
+    wrong too: combined averages two motion cells and mixes in laterality, whose
+    denominator is the reflux trials, not dir_n at a single motion level.
+    """
+    a = g(n, WORST, "dir_acc")
+    nn = dir_n(n, WORST)
+    if a != a or nn <= 0:
         return "n/a"
-    lo, hi = CI[n]
+    lo, hi = wilson(a, nn)
     return f"{100*lo:.0f}-{100*hi:.0f}%"
 
 
@@ -189,7 +203,10 @@ HTML = f"""<!doctype html>
 <title>Directional bioimpedance: how many electrodes?</title>
 <meta property="og:title" content="Directional bioimpedance reflux sensing">
 <meta property="og:description" content="A non-tomographic, direction-first simulation. Electrode count swept to find the functionality/complexity knee.">
-<style>{CSS}</style></head>
+<style>
+.retracted td{{background:#fdecea;color:#5b2b28}}
+.retracted s{{color:#8b3a34}}
+{CSS}</style></head>
 <body>
 <aside class="side">
   <div class="brand"><b>Reflux sensing</b></div>
@@ -450,9 +467,9 @@ HTML = f"""<!doctype html>
     <div class="prov-wrap"><table class="prov">
       <tr><th>Finding</th><th>Implication</th></tr>
       <tr><td>N=4 gives no direction at all</td><td>Any single-zone (single Wenner array) proposal cannot detect reflux direction. Minimum is 5, and 5 cannot reject common mode.</td></tr>
-      <tr><td>More electrodes made direction <b>worse</b>, not better</td><td>Over a fixed span, extra electrodes shrink the pitch and add aperture choices for the selector to get wrong. Direction accuracy falls from {pct(g(5,WORST,'dir_acc'))} (N=5) to {pct(g(12,WORST,'dir_acc'))} (N=12) at the worst motion. This is the opposite of the intuition that denser is safer.</td></tr>
+      <tr class="retracted"><td><s>More electrodes made direction <b>worse</b>, not better</s><br><b>RETRACTED.</b></td><td>This was an artifact of a greedy aperture-selection rule, not physics. Forcing each aperture on identical data showed the selector losing at every N &#8805; 8; replacing selection with fusion reversed the result. The raw figures below still fall with N at {WORST:.1f} cm because they count an <b>abstention as a wrong answer</b>, and only N &#8805; 6 can abstain at all. On the calls actually made, N=8 reaches {pct(g(8,WORST,'dir_acc_decided'))} against {pct(g(5,WORST,'dir_acc_decided'))} for N=5. Slope precision scales with the axial lever arm of the zone centroids, not with electrode density.</td></tr>
       <tr><td>Direction and laterality disagree on the optimum</td><td>Direction favours N={REC_DIR}; laterality favours N={REC} ({pct(g(REC,WORST,'lat_acc'))} vs {pct(g(REC_DIR,WORST,'lat_acc'))} at the worst motion). Specify <b>N={REC}, {2*REC} channels</b>, accepting a small direction cost to meet the laterality requirement.</td></tr>
-      <tr><td><b>Span is the dominant lever</b></td><td>Accuracy runs {pct(M["span_sweep"]["8.0"]["dir_acc"])} at 8 cm to {pct(M["span_sweep"]["16.0"]["dir_acc"])} at 16 cm. That range is far wider than any electrode-count choice. Measure the usable pediatric flank length early, because it caps the design.</td></tr>
+      <tr class="retracted"><td><s><b>Span is the dominant lever</b>; longer is better</s><br><b>RETRACTED.</b></td><td>Span was acting as a proxy for <b>placement</b>. A later study varied span and axial position independently and found position dominates: a well-placed short strip beats a badly-placed long one, and the 16 cm strip this page recommends misses 43% of low-grade refluxers because its zones sit where a low-grade bolus never travels. Accuracy still runs {pct(M["span_sweep"]["8.0"]["dir_acc"])} at 8 cm to {pct(M["span_sweep"]["16.0"]["dir_acc"])} at 16 cm in this sweep, but that sweep held position fixed at mid-torso, which confounds the two.</td></tr>
       <tr><td>Flat across 50-80 dB SNR</td><td>The design is <b>motion-limited, not noise-limited</b>. A quieter front end does not buy accuracy; motion tolerance and strip length do.</td></tr>
       <tr><td>Depth is set by aperture, not count</td><td>Use wide (Schlumberger) apertures to reach the ureter; a dense strip is useful because it can <b>synthesize</b> apertures, not because adjacent windows are better.</td></tr>
       <tr><td>Amplitude-only collapses</td><td>Confirms the design premise: measure direction, not presence. This is the specific failure the tomographic framing could not escape.</td></tr>

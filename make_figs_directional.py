@@ -129,19 +129,31 @@ ax.plot(ch, latv, "s--", color=C1, lw=2.4, ms=8, label="laterality accuracy")
 for n, x, y in zip(PLOT_N, ch, dirv):
     ax.annotate(f"N={n}", (x, y), textcoords="offset points", xytext=(0, -16),
                 ha="center", fontsize=9.5, color=MUT)
-# the recommendation: best laterality among counts not significantly worse on direction
-best = max(dirv)
-ok = [(n, x, d, l) for n, x, d, l in zip(PLOT_N, ch, dirv, latv)]
-lo = min(wilson(best/100, dn(PLOT_N[int(np.argmax(dirv))], worst))[0]*100, best)
-cand = [t for t in ok if wilson(t[2]/100, dn(t[0], worst))[1]*100 >= lo]
-rec = max(cand, key=lambda t: t[3]) if cand else ok[0]
-ax.axvline(rec[1], color=C2, ls="--", lw=2)
-ax.annotate(f"chosen: N={rec[0]}\nbest laterality ({rec[3]:.0f}%) among counts\nnot significantly worse on direction",
-            (rec[1], min(min(dirv), min(latv)) + 2), textcoords="offset points",
-            xytext=(10, 0), fontsize=9.5, color=C2, va="bottom")
+# DEFECT 29, FIXED. This panel ran its own selection rule -- best laterality
+# among counts not significantly worse on direction, evaluated at the WORST
+# motion level (0.9 cm) -- and annotated the winner as "chosen". build_site.py
+# selects on a different rule at the DESIGN TARGET (0.3 cm) and gets N=8. Both
+# were published in the same section, with the figure captioned "Why N was
+# chosen" sitting directly beneath the "N = 8 recommended" card, and neither
+# acknowledged the other. The panel now marks the SHIPPED choice and states
+# plainly that the ranking at 0.9 cm, which is outside tolerance, is different.
+SHIPPED_N = 8
+rec = next((t for t in zip(PLOT_N, ch, dirv, latv) if t[0] == SHIPPED_N), None)
+alt = max(zip(PLOT_N, ch, dirv, latv), key=lambda t: t[3])
+if rec:
+    ax.axvline(rec[1], color=C2, ls="--", lw=2)
+    ax.annotate(f"shipped: N={rec[0]}\nselected at the 0.3 cm design target,\nnot on this panel's 0.9 cm data",
+                (rec[1], min(min(dirv), min(latv)) + 2), textcoords="offset points",
+                xytext=(10, 0), fontsize=9.5, color=C2, va="bottom")
+if alt[0] != SHIPPED_N:
+    ax.axvline(alt[1], color=MUT, ls=":", lw=1.6)
+    ax.annotate(f"best laterality at 0.9 cm\nwould be N={alt[0]} ({alt[3]:.0f}%)",
+                (alt[1], max(max(dirv), max(latv)) - 4), textcoords="offset points",
+                xytext=(8, 0), fontsize=8.8, color=MUT, va="top")
 ax.set_xlabel("total channels (2 strips x N)   ->   complexity, cost, contact points")
 ax.set_ylabel(f"accuracy (%) at {worst:.1f} cm motion")
-ax.set_title("Why N was chosen: direction and laterality rank the counts differently")
+ax.set_title("Direction and laterality rank the counts differently\n"
+             "and the ranking changes with motion, so the selection level matters")
 ax.legend(fontsize=9.5, loc="upper center"); _fin(ax)
 fig.tight_layout(); fig.savefig("figs_dir/figC_complexity.png", bbox_inches="tight")
 plt.close(fig); print("[C] chosen-N rationale")
@@ -151,9 +163,29 @@ fig, axs = plt.subplots(1, 2, figsize=(11, 4.3))
 for m in MOTION:
     axs[0].plot(COUNTS, [g(n, m, "auc") for n in COUNTS], "o-", color=MCOL[m],
                 lw=2, ms=6, label=f"motion {m:.1f} cm")
-axs[0].axhline(.5, ls=":", color=MUT); axs[0].set_xticks(COUNTS)
-axs[0].set_xlabel("electrodes per strip (N)"); axs[0].set_ylabel("reflux AUC")
-axs[0].set_title("Reflux vs rest (AUC)"); axs[0].legend(fontsize=8.5); _fin(axs[0])
+# DEFECT 30, FIXED. This drew a 0.5 chance line, which is the floor for a metric
+# with no information at all. It is NOT the floor for THIS label design. Reflux
+# is scored against an equal mix of noflow, antegrade and bladder, and two of
+# those three contain no travelling bolus whatever. A detector that only senses
+# "is there a conductive bolus present", with no directional skill at all,
+# therefore separates reflux from noflow and from bladder almost perfectly and
+# sits at chance only against antegrade: (1 + 1 + 0.5)/3 = 0.833. Everything
+# between 0.5 and 0.833 is dead scale, and drawing the line at 0.5 made an
+# amplitude-only classifier look skilful. N=4, which cannot fit a slope at all,
+# measures 0.852 here -- just above the no-direction-information floor, exactly
+# as it should.
+NO_DIR_FLOOR = (1.0 + 1.0 + 0.5) / 3.0
+axs[0].axhline(.5, ls=":", color=MUT, lw=1)
+axs[0].text(COUNTS[0], .515, "no information at all", color=MUT, fontsize=8)
+axs[0].axhspan(.5, NO_DIR_FLOOR, color=C3, alpha=.08)
+axs[0].axhline(NO_DIR_FLOOR, ls="--", color=C3, lw=1.8)
+axs[0].text(COUNTS[0], NO_DIR_FLOOR + .012,
+            "bolus-presence only, no direction (0.833)", color=C3, fontsize=8.5)
+axs[0].set_xticks(COUNTS)
+axs[0].set_xlabel("electrodes per strip (N)")
+axs[0].set_ylabel("reflux AUC  (learned classifier)")
+axs[0].set_title("Reflux vs rest, all features\nthe shaded band is dead scale")
+axs[0].legend(fontsize=8.5); _fin(axs[0])
 
 nb = COUNTS[min(2, len(COUNTS) - 1)]
 keys = [("auc", "all features"), ("auc_direction_only", "direction only"),
