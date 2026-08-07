@@ -113,6 +113,7 @@ HTML = f"""<!doctype html>
     <a href="#limits">Limits</a><a href="#reproduce">Reproduce</a>
   </nav>
   <div class="side-foot">
+    <a href="FULL_REPORT.html">full report &#8599;</a>
     <a href="https://github.com/larachieppe/reflux-directional" target="_blank">source &amp; code &#8599;</a>
   </div>
 </aside>
