@@ -445,13 +445,17 @@ def direction_features(dZ, world):
                             n_apertures=0, defined=False)
             continue
         # weight: axial lever arm x fit quality x signal strength
-        tot_w, ev, lin_w, dif_e = 0.0, 0.0, 0.0, 0.0
+        # Fuse lag and slope SEPARATELY. They are two independent estimators of
+        # the same sign (end-to-end lag, and the least-squares arrival-time
+        # slope); collapsing both to one fused scalar would emit duplicate
+        # columns into the feature vector and distort the direction-only ablation.
+        tot_w, lag_w, slope_w, lin_w, dif_e = 0.0, 0.0, 0.0, 0.0, 0.0
         for c in cands:
             base = max(c.get("z_baseline", 0.0), 1e-6)
             q = max(c["lin"], 0.0) if c["n_zones"] >= 3 else 0.35
             w = base * (0.25 + q) * np.sqrt(max(c["dif_energy"], 0.0))
-            e_c = c["lag"] + (c["slope"] if c["n_zones"] >= 3 else 0.0)
-            ev += w * e_c
+            lag_w += w * c["lag"]
+            slope_w += w * (c["slope"] if c["n_zones"] >= 3 else c["lag"])
             lin_w += w * c["lin"]
             dif_e += c["dif_energy"]
             tot_w += w
@@ -460,11 +464,11 @@ def direction_features(dZ, world):
             out[s_i] = dict(best, energy=raw_e, n_apertures=len(cands))
             continue
         best = max(cands, key=lambda c: c.get("z_baseline", 0.0) * max(c["lin"], 0.0))
-        out[s_i] = dict(lag=ev / tot_w, slope=ev / tot_w, lin=lin_w / tot_w,
-                        peak=best["peak"], energy=raw_e, dif_energy=dif_e,
-                        n_zones=best["n_zones"], m=best["m"],
+        out[s_i] = dict(lag=lag_w / tot_w, slope=slope_w / tot_w,
+                        lin=lin_w / tot_w, peak=best["peak"], energy=raw_e,
+                        dif_energy=dif_e, n_zones=best["n_zones"], m=best["m"],
                         n_apertures=len(cands), defined=True,
-                        fused_ev=ev / tot_w)
+                        fused_ev=(lag_w + slope_w) / tot_w)
     return out
 
 
