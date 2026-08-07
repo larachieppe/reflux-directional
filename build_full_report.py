@@ -8,6 +8,8 @@ current figures.
 """
 import base64, json, os
 
+import build_methods as bm
+
 D = json.load(open("metrics_design.json"))
 E = json.load(open("metrics_directional.json"))
 P = json.load(open("metrics_placement.json"))
@@ -126,6 +128,8 @@ HTML = f"""<!doctype html>
  .warn{{border-left:4px solid #c0392b;padding:10px 14px;background:#fdf2f1;margin:14px 0}}
  .note{{border-left:4px solid #c98500;padding:10px 14px;background:#fbf7ef;margin:14px 0}}
  img{{max-width:100%;border:1px solid #ddd}} .sub{{color:#555;font-size:10pt}}
+{bm.CSS}
+ .methods table.mm-t th,.methods table.mm-t td{{text-align:left}}
 </style></head><body>
 
 <h1>Directional bioimpedance sensing for pediatric vesicoureteral reflux</h1>
@@ -135,8 +139,12 @@ Source: https://github.com/larachieppe/reflux-directional</p>
 
 <div class="key"><b>What this is.</b> A finite-element simulation testing, before hardware exists,
 whether a surface bioimpedance device can detect vesicoureteral reflux by measuring the
-<b>direction</b> urine travels rather than reconstructing an image. Four studies were run:
+<b>direction</b> urine travels rather than reconstructing an image. Four studies are reported:
 electrode count, locked-design characterization, strip placement, and misplacement tolerance.
+Two further studies, placement precision and non-rigid respiratory motion, are running or queued
+and their methods are stated in section 7 ahead of their results.
+Section 2 gives the shared forward model, the estimator, and the statistics, so that every study
+below can be read as a statement of what it changed rather than a self-contained method.
 <b>Fourteen defects were found and fixed along the way, and three published headline claims were
 subsequently overturned by measurement.</b> That history is reported here alongside the results,
 because it bears directly on how much weight the numbers can carry.</div>
@@ -156,7 +164,15 @@ to both, which is what motion is. A single symmetric tetrapolar array is directi
 symmetry, so the geometry is a longitudinal strip, one per flank, which also gives laterality.</p>
 {img("figs_dir/figG_mechanism.png","The mechanism. Reflux: the impedance dip climbs the strip and arrival time rises with height. Antegrade: the mirror image. The SIGN of that slope is the diagnosis.")}
 
-<h2>2. Study 1: how many electrodes</h2>
+<h2>2. Materials and methods</h2>
+<p>Every study below shares one forward model and one estimator, and differs only in
+which factors it varies. The shared model is stated once here; each study then states
+only what it changed, what it held fixed, and how its endpoint was computed. All
+parameters are introspected from the model module and from the metrics file each run
+wrote, so they cannot drift from the code that produced the results.</p>
+{bm.common_html()}
+
+<h2>3. Study 1: how many electrodes</h2>
 <p>Direction accuracy at grade &ge; III. Two accuracy columns are shown at 0.6 cm because a
 single one is misleading: the raw figure counts an <b>abstention</b> as a wrong answer, while the
 abstain gate requires at least three zones, so N=5 (two zones) is <b>structurally exempt</b> from
@@ -180,7 +196,9 @@ N &ge; 8. Replacing selection with fusion across apertures reversed the result: 
 <i>lever arm</i> of the zone centroids, not with electrode separation.</div>
 {img("figs_dir/figA_count.png","Direction accuracy against electrode count with Wilson 95% intervals.")}
 
-<h2>3. Study 2: the locked design</h2>
+{bm.methods_html("electrode-count")}
+
+<h2>4. Study 2: the locked design</h2>
 <p>{C['n_strip']} electrodes per strip, {C['span']:.0f} cm span, {C['channels']} channels,
 {C['snr']} dB, {C['freq_khz']} kHz.</p>
 <table><tr><th>Motion</th><th>Direction (old &rarr; new)</th><th>Laterality</th><th>AUC</th><th>Abstain</th></tr>
@@ -199,7 +217,9 @@ healthy and refluxing children and counted a correct negative as a hit. Its chan
 <i>above</i> the ~80% VCUG line it was being compared against, so a coin-flip detector would have
 appeared to beat VCUG.</div>
 
-<h2>4. Study 3: where the strip sits</h2>
+{bm.methods_html("design")}
+
+<h2>5. Study 3: where the strip sits</h2>
 <p>Low-grade reflux only traverses the lower ureter, so what matters is how many tetrapolar zone
 centroids its bolus actually crosses. Reflux-only detection, still:</p>
 <table><tr><th>Placement</th><th>Zones crossed (grade I)</th><th>I</th><th>II</th><th>III</th><th>IV</th><th>V</th></tr>
@@ -215,7 +235,9 @@ coverage of the lower ureter.</div>
 {img("figs_place/p1_grade_placement.png","Detection by grade and placement. The published configuration is outlined in red.")}
 {img("figs_place/p2_mechanism.png","The mechanism: a bolus crossing fewer than about three zone centroids cannot support a slope fit or common-mode rejection.")}
 
-<h2>5. Study 4: misplacement tolerance</h2>
+{bm.methods_html("placement")}
+
+<h2>6. Study 4: misplacement tolerance</h2>
 <p>The optimum is only useful if it survives imperfect placement by a parent, against a landmark
 that is not externally visible. Reflux-only detection, still, offsetting the
 {T['config']['span'] if T else 10:.0f} cm strip along the body axis:</p>
@@ -230,7 +252,16 @@ noise at n=16. The engineering consequence is that a 10 cm strip needs a landmar
 aid, or a longer strip should be used to buy positional margin at the cost of peak low-grade
 accuracy.</div>
 
-<h2>6. Defect log</h2>
+{bm.methods_html("tolerance")}
+
+<h2>7. Studies 5 and 6: in progress</h2>
+<p>Two further studies are running or queued at the time of writing. Their designs
+are fixed and are stated in full below, so the methods can be reviewed before the
+results exist. No results are reported for them here.</p>
+{bm.methods_html("precision")}
+{bm.methods_html("motion2")}
+
+<h2>8. Defect log</h2>
 <p>Fourteen defects were found and corrected. Six by debugging when the detector sat at chance
 despite correct forward physics, five by independent adversarial review of the code, and three by
 a later audit. Several fixes introduced new defects, which is itself part of the record.</p>
@@ -243,7 +274,7 @@ measuring a threshold distribution instead of choosing a plausible number, readi
 vector actually contained instead of trusting the function's return value. Simulation results here
 should be treated as hypotheses for a phantom to test, not as measurements.</div>
 
-<h2>7. What survived, what did not</h2>
+<h2>9. What survived, what did not</h2>
 <table><tr><th>Claim</th><th>Status</th></tr>
 <tr class="bad"><td>More electrodes make direction accuracy worse</td><td><b>Overturned.</b> Artifact of greedy aperture selection.</td></tr>
 <tr class="bad"><td>Span is the dominant lever; longer is better</td><td><b>Overturned.</b> Span was a proxy for placement; a shorter well-placed strip wins.</td></tr>
@@ -254,7 +285,7 @@ should be treated as hypotheses for a phantom to test, not as measurements.</div
 <tr class="hi"><td>Multi-event capture beats single-void VCUG</td><td>Holds, now on separated sensitivity and specificity with the chance floor shown.</td></tr>
 </table>
 
-<h2>8. Open risks</h2>
+<h2>10. Open risks</h2>
 <ol>
 <li><b>Placement precision is the binding constraint.</b> &plusmn;1 cm on an invisible landmark, on a
 child. This decides whether low-grade detection is real in practice.</li>

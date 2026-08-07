@@ -1,0 +1,296 @@
+<!doctype html><html><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Materials &amp; Methods — directional reflux detection</title>
+<link rel="icon" href="favicon.ico"><style>
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+ max-width:880px;margin:0 auto;padding:38px 22px;color:#1c2b30;line-height:1.62}
+h1{margin-bottom:4px} .sub{color:#5b6b73;margin-top:0}
+code{background:#eef3f6;padding:1px 5px;border-radius:3px;font-size:.9em}
+
+.methods{border-left:3px solid #2b7fd4;background:#f7fafc;padding:18px 22px;
+ margin:26px 0;border-radius:0 6px 6px 0}
+.methods h3{margin-top:0;color:#1c2b30}
+.methods h4{margin:18px 0 6px;font-size:.95rem;text-transform:uppercase;
+ letter-spacing:.04em;color:#4a6572}
+.mm-lead{font-size:1.02rem}
+dl.mm{display:grid;grid-template-columns:max-content 1fr;gap:4px 18px;margin:8px 0}
+dl.mm dt{font-weight:600;color:#4a6572}
+dl.mm dd{margin:0}
+.mm-ol{margin:8px 0 8px 18px}.mm-ol li{margin:5px 0}
+table.mm-t{border-collapse:collapse;font-size:.9rem;margin:6px 0;width:100%}
+table.mm-t caption{text-align:left;font-weight:600;padding-bottom:4px;color:#4a6572}
+table.mm-t th,table.mm-t td{border:1px solid #d7e0e4;padding:3px 9px;text-align:left}
+table.mm-t th{background:#eef3f6}
+.mm-note{font-size:.88rem;color:#5b6b73;margin:6px 0}
+.mm-two{display:grid;grid-template-columns:1fr 1fr;gap:22px}
+@media(max-width:760px){.mm-two{grid-template-columns:1fr}}
+.mm-warn{background:#fff6e5;border:1px solid #f0d090;padding:10px 14px;
+ border-radius:5px;margin:12px 0;font-size:.93rem}
+</style></head><body>
+<h1>Materials &amp; Methods</h1>
+<p class="sub">Directional bioimpedance detection of vesicoureteral reflux &middot;
+generated 2026-08-07 &middot; commit <code>e9fe832</code></p>
+<p>Parameters below are introspected from the model module and from the metrics
+file each study wrote, not transcribed by hand.</p>
+
+<h3>M0. Model shared by every study</h3>
+
+<p class="mm-lead">All six studies use one forward model and one estimator. They
+differ only in which factors are varied. This section states the inputs once;
+each study below states only what it changed.</p>
+
+<h4>Information used as input</h4>
+<p>The simulation is driven by four sources of information, and nothing else. No
+measured patient data was available at any point, so every result is a
+feasibility and robustness envelope rather than clinical performance.</p>
+<ol class="mm-ol">
+<li><b>Tissue electrical properties</b> — conductivity and relative permittivity
+per tissue, at the measurement band, with a log-frequency dispersion
+<code>&sigma;(f) = &sigma;<sub>0</sub>(1 + 0.04&nbsp;log<sub>10</sub>(f/50&nbsp;kHz))</code>.
+The urine-to-soft-tissue contrast is the entire physical basis of the method:
+urine at 1.70 S/m against muscle at 0.34 S/m is a
+factor of 5.0.</li>
+<li><b>Torso and organ geometry</b> — an idealised cylinder with ellipsoidal
+kidney, ureter and bladder, not segmented CT. Dimensions are scaled to a young
+child.</li>
+<li><b>Reflux grade definitions</b> — the international grading scale mapped to a
+bolus size and a retrograde reach up the ureter, plus the published prevalence of
+each grade, used to weight the mixed-grade cohorts.</li>
+<li><b>An assumed instrument noise budget</b>, stated as SNR in dB rather than
+taken from a datasheet, and swept as a factor in Study 1.</li>
+</ol>
+
+<div class="mm-two">
+<div>
+<table class="mm-t"><caption>Tissue properties</caption>
+<tr><th>tissue</th><th>&sigma; (S/m)</th><th>&epsilon;<sub>r</sub></th></tr>
+<tr><td>muscle</td><td>0.340</td><td>26,000</td></tr><tr><td>fat</td><td>0.043</td><td>1,500</td></tr><tr><td>kidney</td><td>0.110</td><td>30,000</td></tr><tr><td>bladder</td><td>0.300</td><td>4,000</td></tr><tr><td>urine</td><td>1.700</td><td>80</td></tr></table>
+<p class="mm-note">The bladder entry is <b>wall only</b>. The lumen is filled with
+urine at a lumen fraction of 0.82. Modelling the whole bladder at wall
+conductivity was a defect: it put the bladder below muscle and inverted the
+strongest confounder in the problem.</p>
+</div>
+<div>
+<table class="mm-t"><caption>Grade model</caption>
+<tr><th>grade</th><th>bolus semi-axis</th><th>ureteric reach</th><th>prevalence</th></tr>
+<tr><td>1</td><td>0.10 R</td><td>0.20</td><td>30%</td></tr><tr><td>2</td><td>0.14 R</td><td>0.38</td><td>30%</td></tr><tr><td>3</td><td>0.19 R</td><td>0.62</td><td>22%</td></tr><tr><td>4</td><td>0.24 R</td><td>0.84</td><td>13%</td></tr><tr><td>5</td><td>0.30 R</td><td>1.00</td><td>5%</td></tr></table>
+<p class="mm-note">Reach is the fraction of the ureter the retrograde bolus
+climbs. It is what makes low grades hard: a grade-I bolus reaches
+20% of the way and may cross too few sensing zones to fit
+a slope.</p>
+</div>
+</div>
+
+<h4>Forward model</h4>
+<dl class='mm'><dt>Solver</dt><dd>scikit-fem, tetrahedral, first-order Lagrange</dd><dt>Domain</dt><dd>cylinder R = 5.5 cm, height = 20.0 cm, 6 radial rings, 17 axial layers</dd><dt>Electrode model</dt><dd>Complete Electrode Model (CEM) — finite contact impedance and current-conserving electrode constraints, not point electrodes</dd><dt>Contact impedance</dt><dd>z<sub>0</sub> ~ U(5, 20) &Omega;&middot;cm<sup>2</sup>, redrawn per electrode per trial, with a slow drift and an independent per-electrode component</dd><dt>Frequencies</dt><dd>50 kHz and 100 kHz, solved separately</dd><dt>Electrodes</dt><dd>two longitudinal flank strips, one per side, placed on a partial circumference — deliberately not a closed belt</dd><dt>Sensing</dt><dd>tetrapolar (Kelvin): an outer pair drives current, an inner pair senses voltage, so contact impedance largely drops out of the sensed quantity</dd><dt>Zones</dt><dd>symmetric tetrapolar quadruples at odd outer gaps G, giving several overlapping apertures per strip at different depth sensitivities</dd></dl>
+
+<h4>How a trial is generated</h4>
+<ol class="mm-ol">
+<li>Anatomy is drawn: ureter lateral position &plusmn;8%, kidney and bladder
+centres jittered by 3–5% of torso radius or height.</li>
+<li>A conductivity field is built per time frame. A constant-volume urine bolus
+travels along the ureter — <b>up</b> for reflux, <b>down</b> for antegrade flow.
+Constant volume matters: an earlier version modulated bolus amplitude over time,
+which let the estimator identify the class from the amplitude envelope alone
+without using direction at all.</li>
+<li>Body motion is applied as a displacement of the body relative to the
+electrodes, as a smooth random walk plus a periodic breathing term at 0.30 Hz.
+A <code>grad</code> parameter makes displacement height-dependent, so motion can
+be rigid (grad = 0) or a craniocaudal gradient (grad = 1).</li>
+<li>The CEM problem is solved per frame per frequency, giving a transfer
+impedance per zone.</li>
+<li>Noise is added as a <b>fractional</b> perturbation,
+<code>&sigma;<sub>n</sub> = 10<sup>&minus;SNR/20</sup></code>, with a
+zone-correlated and a zone-independent component.</li>
+</ol>
+
+<h4>Estimator</h4>
+<ol class="mm-ol">
+<li><b>Normalise.</b> <code>dZ = (Z &minus; Z<sub>ref</sub>) / |Z<sub>ref</sub>|</code>,
+where <code>Z<sub>ref</sub></code> is the mean of the first two frames. Making
+this fractional removes a bias caused by unequal realised electrode areas.</li>
+<li><b>Reject common mode.</b> Subtract the across-zone mean of the real part at
+each frame. Whole-body motion moves every zone together and is removed; a bolus
+travelling past zones in sequence is not. This requires at least three zones —
+with exactly two, the mean-removed pair are exact negatives and the operation
+destroys the signal.</li>
+<li><b>Time the wave.</b> Per zone, take the arrival time of the response peak,
+then regress arrival time against the zone's realised axial height. Realised
+electrode centroids are used, not requested positions.</li>
+<li><b>Fuse apertures.</b> Combine apertures weighted by axial lever arm, fit
+quality and &radic;energy. This replaced a greedy best-aperture selector that was
+overfitting and produced the since-retracted "more electrodes is worse" claim.</li>
+<li><b>Decide.</b> The <b>sign of the slope</b> is the diagnosis: bolus arriving
+at superior zones later than inferior zones means upward, i.e. reflux.</li>
+<li><b>Abstain.</b> If wave linearity &lt; 0.35 the trial returns no
+call. The threshold was set by Youden index. Abstentions are scored as errors in
+the headline accuracy, and reported separately as accuracy-on-calls-made.</li>
+</ol>
+
+<h4>Statistics</h4>
+<dl class='mm'><dt>Interval estimates</dt><dd>Wilson 95% confidence intervals on every proportion</dd><dt>Independence</dt><dd>trial index ranges are disjoint across configurations, so no trial is reused between arms being compared</dd><dt>Paired comparisons</dt><dd>configurations are replayed on matched seeds where the comparison is within-study</dd><dt>Subject-level results</dt><dd>a k-of-n rule over repeated voids, with sensitivity and specificity reported separately and the chance floor stated — pooling them produced a chance floor above the VCUG reference line</dd><dt>Confusion matrices</dt><dd>reported at a disclosed 90%-specificity operating threshold, not at the median</dd></dl>
+
+<div class="mm-warn">
+<b>Standing limitation.</b> The geometry is idealised, the tissue table is
+literature-derived, and the noise budget is assumed. These results bound whether
+the physics can work and how it degrades. They are not evidence of clinical
+accuracy, and no claim here substitutes for a phantom or a patient study.
+</div>
+<div class='methods'><h3>Materials &amp; methods &mdash; Study 1: Electrode count, span, motion and SNR sweep</h3>
+<h4>Question</h4>
+<p>How many electrodes per strip are needed, and over what span, to recover flow
+direction — and does adding electrodes help, hurt, or saturate? The design goal
+was to maximise function while minimising complexity, so the study had to find
+the point past which extra channels stop buying accuracy.</p>
+
+<h4>Factors varied</h4>
+<dl class='mm'><dt>Electrodes per strip</dt><dd>4, 5, 6, 8, 10, 12</dd><dt>Strip span (cm)</dt><dd>8, 10, 12, 14, 16</dd><dt>Motion amplitude (cm)</dt><dd>0, 0.3, 0.6, 0.9</dd><dt>SNR (dB)</dt><dd>50, 60, 70, 80</dd><dt>Frames per trial</dt><dd>20</dd></dl>
+<p class="mm-note">Factors are crossed, giving on the order of 480 configuration
+cells before trial replication. Meshes are built once and shared across electrode
+counts, so only the electrode set and the CEM solve differ between arms — the
+comparison is not confounded by mesh differences.</p>
+
+<h4>How results were reached</h4>
+<p>Each arm reports direction accuracy with abstentions scored as errors,
+accuracy on calls made, abstention rate, and AUC. <b>AUC is computed separately
+per motion level</b>; an earlier version computed it once and copied it across
+motion arms, which hid the degradation the study existed to measure.</p>
+
+<h4>Retracted from this study</h4>
+<p>Two published conclusions were withdrawn after audit. "More electrodes is
+worse" was an artefact of the greedy aperture selector, now replaced by fusion.
+"Longer span is better" was an artefact of span acting as a proxy for placement,
+which Study 3 then measured directly. At N = 12 electrodes shared mesh facets
+welded neighbouring electrodes together; placement now uses a pitch-scaled
+acceptance window with a hard assertion against overlap.</p>
+<h4>Provenance</h4><dl class='mm'><dt>Source</dt><dd><code>run_directional.py</code></dd><dt>Metrics file</dt><dd><code>metrics_directional.json</code></dd><dt>Runtime</dt><dd>103 min</dd></dl></div><div class='methods'><h3>Materials &amp; methods &mdash; Study 2: Locked design characterisation</h3>
+<h4>Question</h4>
+<p>With the configuration locked, how does it behave across the full motion
+range, and what does its confusion matrix look like at a defensible operating
+point?</p>
+
+<h4>Configuration held fixed</h4>
+<dl class='mm'><dt>Electrodes per strip</dt><dd>8</dd><dt>Total channels</dt><dd>16</dd><dt>Span (cm)</dt><dd>16</dd><dt>SNR (dB)</dt><dd>60</dd><dt>Frames per trial</dt><dd>20</dd></dl>
+
+<h4>Factor varied</h4>
+<p>Motion amplitude across 7 levels
+(0, 0.15, 0.3, 0.45, 0.6, 0.75, 0.9 cm), which is the dominant
+real-world stressor and the one that took the prior tomographic program from 73%
+still to 44% moving.</p>
+
+<h4>How results were reached</h4>
+<p>Subject-level analysis aggregates repeated voids per simulated child under a
+k-of-n rule, reporting sensitivity and specificity <b>separately</b> with the
+chance floor stated. The confusion matrix is evaluated at a <b>disclosed
+90%-specificity threshold</b>. Reporting at the median instead had capped
+apparent specificity at 66.7% — an artefact of the threshold, not the
+classifier.</p>
+<h4>Provenance</h4><dl class='mm'><dt>Source</dt><dd><code>run_design.py</code></dd><dt>Metrics file</dt><dd><code>metrics_design.json</code></dd><dt>Runtime</dt><dd>75 min</dd></dl></div><div class='methods'><h3>Materials &amp; methods &mdash; Study 3: Strip placement over the ureterovesical junction</h3>
+<h4>Question</h4>
+<p>Earlier runs suggested grades I–II were intrinsically undetectable. That
+conclusion was suspect, because the strip's axial centre was never actually
+forwarded to the electrode placement routine — every run had silently used the
+default mid-torso position. This study asks whether low-grade detectability is a
+property of the method or a property of <i>where the strip sits</i> relative to
+the ureterovesical junction.</p>
+
+<h4>Factors varied</h4>
+<dl class='mm'><dt>(span, axial centre) pairs</dt><dd>16 cm @ z=0.40, 16 cm @ z=0.50, 16 cm @ z=0.60, 12 cm @ z=0.30, 12 cm @ z=0.36, 12 cm @ z=0.42, 12 cm @ z=0.50, 10 cm @ z=0.28, 10 cm @ z=0.34, 10 cm @ z=0.42</dd><dt>Reflux grades</dt><dd>1, 2, 3, 4, 5</dd><dt>Motion</dt><dd>still and 0.30 cm</dd><dt>Torso height (cm)</dt><dd>20</dd></dl>
+
+<h4>How results were reached</h4>
+<p>Beyond accuracy, the study computes the <b>mechanism</b> directly: for each
+placement it counts how many zone centroids the grade-I bolus physically crosses.
+This converts a performance curve into a causal explanation — low grades fail
+when the bolus crosses fewer than three zones, because three is the minimum for
+both common-mode rejection and a slope fit. A placement that puts more zones over
+the short retrograde path of a low-grade bolus recovers it.</p>
+
+<h4>Result that overturned a published claim</h4>
+<p>Grades I–II are <b>not</b> intrinsically undetectable. The earlier claim was a
+plumbing defect. This is the clearest example in the project of a bug producing a
+confident and completely wrong scientific conclusion.</p>
+<h4>Provenance</h4><dl class='mm'><dt>Source</dt><dd><code>run_placement.py</code></dd><dt>Metrics file</dt><dd><code>metrics_placement.json</code></dd><dt>Runtime</dt><dd>66 min</dd></dl></div><div class='methods'><h3>Materials &amp; methods &mdash; Study 4: Misplacement tolerance</h3>
+<h4>Question</h4>
+<p>Study 3 found a placement optimum. A placement that only works when perfectly
+aligned is not a product: the strip is applied by a parent or nurse, to a child
+who will not hold still, against a landmark — the ureterovesical junction — that
+is not externally visible. How much misalignment can the design absorb?</p>
+
+<h4>Design</h4>
+<dl class='mm'><dt>Centre position</dt><dd>inherited from Study 3's best low-grade placement: 10 cm span at z = 0.34</dd><dt>Offsets applied (cm)</dt><dd>-2, -1, +0, +1, +2</dd><dt>Grades</dt><dd>1, 2, 3, 4, 5</dd><dt>Motion</dt><dd>0, 0.3</dd><dt>Trials per cell</dt><dd>32</dd></dl>
+<p class="mm-note">The optimum is <b>read from</b> <code>metrics_placement.json</code>
+rather than hard-coded, so this study cannot silently test a stale position if
+Study 3 is re-run.</p>
+
+<h4>How results were reached</h4>
+<p>Grades are pooled into low (I–II) and high (III–V) bands, because the low band
+is where placement sensitivity lives. The reported cost is the accuracy change
+relative to the zero-offset arm, so the endpoint is degradation, not absolute
+accuracy.</p>
+
+<h4>Consequence</h4>
+<p>Accuracy at the optimum being high while collapsing 1 cm away does not license
+the claim that low-grade reflux is detectable. It licenses the claim that the
+design needs a landmark, a longer strip, or an alignment aid. That open trade is
+what Study 5 was built to resolve.</p>
+<h4>Provenance</h4><dl class='mm'><dt>Source</dt><dd><code>run_tolerance.py</code></dd><dt>Metrics file</dt><dd><code>metrics_tolerance.json</code></dd><dt>Runtime</dt><dd>34 min</dd></dl></div><div class='methods'><h3>Materials &amp; methods &mdash; Study 5: Placement precision across a simulated cohort</h3><div class='mm-warn'><b>Design fixed, results pending.</b> Parameters below are read from the run script, which is the same source the run itself uses. No results are stated.</div>
+<h4>Question</h4>
+<p>Across a cohort where <i>every</i> child is imperfectly measured, what
+fraction is detected — and what fraction is <b>systematically unmeasurable</b>,
+failing on every void, for whom repeat observation never helps?</p>
+
+<div class="mm-warn"><b>This is not a phantom study.</b> A phantom study is
+physical and cannot be run in simulation. This is its simulation analogue.</div>
+
+<h4>Design</h4>
+<dl class='mm'><dt>Placement arms</dt><dd>10 cm @ z=0.34 (short, over the UVJ); 16 cm @ z=0.50 (long, mid-torso)</dd><dt>Placement error &sigma; (cm)</dt><dd>0, 0.5, 1, 2</dd><dt>Simulated children per cell</dt><dd>48</dd><dt>Voids per child</dt><dd>6</dd><dt>Motion (cm)</dt><dd>0.3</dd><dt>Total trials</dt><dd>2,304</dd></dl>
+
+<h4>The design choice that makes this study mean anything</h4>
+<p><b>One placement error is drawn per child and shared across all of that
+child's voids</b>, because a strip is applied once, not re-applied per void. This
+makes failure <i>correlated within a child</i>, which is the entire question. Had
+the error been redrawn per event, repeated voids would average it away and the
+study would have reported a reassuring and meaningless number. Anatomy is
+likewise drawn once per child.</p>
+
+<h4>How results were reached</h4>
+<p>Per child, hits are counted across their voids and passed to the subject-level
+k-of-n analysis. Endpoints are sensitivity and specificity at the best k, the
+fraction of refluxing children <b>never detected on any void</b>, and the same
+restricted to grades I–II. The two placement arms answer the open trade from
+Study 4: whether a longer strip buys positional margin at the cost of peak
+low-grade accuracy.</p>
+<h4>Provenance</h4><dl class='mm'><dt>Source</dt><dd><code>run_precision.py</code></dd><dt>Metrics file</dt><dd><code>metrics_precision.json</code> &mdash; queued, not yet written</dd><dt>Runtime</dt><dd>pending</dd></dl></div><div class='methods'><h3>Materials &amp; methods &mdash; Study 6: Non-rigid respiratory motion</h3><div class='mm-warn'><b>Design fixed, results pending.</b> Parameters below are read from the run script, which is the same source the run itself uses. No results are stated.</div>
+<h4>Question</h4>
+<p>Every motion result in Studies 1–5 used a <b>rigid</b> translation: one
+displacement applied identically to body and bolus. That is precisely the
+perturbation that subtracting the across-zone mean provably nulls. A rigid-only
+model can therefore only ever <i>confirm</i> the common-mode rejection claim — it
+cannot test it. The assertion that the claim was "tested rather than assumed" was
+wrong, and this study exists to correct it.</p>
+
+<p>Real respiratory motion is not rigid. It is a craniocaudal <b>gradient</b>:
+the kidney translates 1–3 cm with the diaphragm while the bladder is nearly
+fixed. A displacement varying linearly with height <b>survives mean
+subtraction</b> and feeds straight into the arrival-time slope as a
+phase-locked false travelling wave — the exact shape of the failure that took the
+prior tomographic program from 73% to 44%.</p>
+
+<h4>Factors varied</h4>
+<dl class='mm'><dt>Displacement amplitude (cm)</dt><dd>0, 0.5, 1, 2, 3</dd><dt>Motion gradient</dt><dd>0, 0.5, 1 &nbsp;(0 = rigid, the old model; 1 = full craniocaudal gradient)</dd><dt>Classes</dt><dd>reflux, antegrade, noflow, bladder</dd><dt>Trials per cell</dt><dd>36</dd><dt>Total trials</dt><dd>2,160</dd></dl>
+<p class="mm-note">Amplitudes were extended to 3 cm to span true respiratory
+kidney excursion. With a full gradient the differential displacement across the
+strip is roughly 0.8&times; amplitude, so an earlier version topping out at 0.9 cm
+would have tested a gradient far gentler than physiology and understated the
+risk.</p>
+
+<h4>Primary endpoint</h4>
+<p><b>False-retrograde rate on non-travelling windows</b> — how often the device
+reports reflux when nothing is flowing and the child is merely breathing. This,
+not accuracy, is the endpoint that decides viability: a device that invents
+reflux during breathing is unusable regardless of how well it scores on real
+events. Secondary endpoints are direction accuracy on real events, and whether
+the abstain gate catches breathing artefact or whether breathing produces waves
+coherent enough to pass it.</p>
+<h4>Provenance</h4><dl class='mm'><dt>Source</dt><dd><code>run_motion2.py</code></dd><dt>Metrics file</dt><dd><code>metrics_motion2.json</code> &mdash; queued, not yet written</dd><dt>Runtime</dt><dd>pending</dd></dl></div>
+</body></html>
