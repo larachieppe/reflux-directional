@@ -143,7 +143,7 @@ def main():
     assert len(fit) and len(ev_), "seed blocks did not split"
 
     SIGNALS = ("abs_ev", "energy", "dif_energy", "lin", "n_cross")
-    out = dict(config=dict(n_strip=N_STRIP, span=SPAN, z_center=Z_CENTER, snr=SNR,
+    out = dict(config=dict(model_version=ds.MODEL_VERSION, n_strip=N_STRIP, span=SPAN, z_center=Z_CENTER, snr=SNR,
                            T=T, motions=list(MOTIONS), n_trial=N_TRIAL,
                            grades=list(GRADES), buckets=BUCKET,
                            seed_fit=SEED_FIT, seed_eval=SEED_EVAL))

@@ -34,6 +34,16 @@ import numpy as np
 import eit3d
 import strip3d
 
+# Semantic version of the SIMULATION, bumped whenever a change alters the
+# numbers a study would produce. Every runner stamps it into its metrics file,
+# so "which code produced this result" is answerable from the result itself
+# rather than from file timestamps -- which flag a comment edit as loudly as a
+# physics change, and which are lost the moment a file is copied.
+#   4  conforming mesh, electrode-fixed fat frame, adjusted-R2 gate,
+#      constant-velocity bolus, call-time FREQS/LIN_GATE resolution
+#   5  inverse-variance aperture fusion
+MODEL_VERSION = 5
+
 EPS0 = 8.8541878128e-12
 FREQS = np.array([50e3, 100e3])
 
@@ -592,8 +602,17 @@ def _strip_aperture_stats(dZ, world, strip, m):
         # has expectation 0 under the null regardless of zone count, so one
         # threshold means the same thing everywhere.
         lin = r2 if LEGACY_LIN else 1.0 - (1.0 - r2) * (nz - 1) / max(nz - 2, 1)
+        # Standard error of the fitted slope. This is what an aperture's vote
+        # should be worth: se^2 = residual variance / sum of squared deviations
+        # of the regressor. A short-lever, poorly-fit aperture gets a large se
+        # and should be discounted in proportion, not by a token amount.
+        dof = max(nz - 2, 1)
+        var_res = ss_res / dof
+        sxx = float(((zz - zz.mean()) ** 2).sum())
+        se_slope = float(np.sqrt(var_res / sxx)) if sxx > 1e-12 else float("inf")
     else:
         lin = 0.0                              # 2 points are trivially collinear
+        se_slope = float("inf")                # and carry no residual to judge
     # Quality must be energy PER ZONE, not total. A shallow aperture has more
     # zones, so its total energy is larger even when each zone sees less signal;
     # selecting on the total would systematically pick the shallowest aperture,
@@ -613,7 +632,7 @@ def _strip_aperture_stats(dZ, world, strip, m):
     # at exactly the configurations where evidence is scarcest. Flagged so the
     # fusion can weight accordingly rather than silently counting it twice.
     return dict(lag=float((tarr[-1] - tarr[0]) / max(dz, 1e-9)), slope=slope,
-                lag_is_slope=bool(nz <= 3),
+                se_slope=se_slope, lag_is_slope=bool(nz <= 3),
                 lin=float(np.clip(lin, -1, 1)), peak=peak,
                 energy=raw_e, dif_energy=per_zone, z_baseline=z_baseline,
                 n_zones=nz, m=m, defined=True)
@@ -662,10 +681,32 @@ def direction_features(dZ, world):
         tot_w, lag_w, slope_w, dif_e = 0.0, 0.0, 0.0, 0.0
         lin_w, tot_wq = 0.0, 0.0
         n_dup = 0
+        # DEFECT 52, FIXED. The fusion weight was
+        #     base * (0.25 + lin) * sqrt(energy)
+        # which compresses fit quality into a 5x range at most, and between a
+        # good fit (lin 0.99) and a bad one (lin 0.86) into just 1.12x. An
+        # aperture whose slope was 80% wrong therefore kept ~40% of the vote.
+        # Measured on the mesh-refinement sequence, that made the FUSED slope
+        # bimodal -- 1.44 / 1.92 / 1.41 / 1.86 / 1.43 -- while the G=3 aperture
+        # alone was stable to 1% across the same meshes. The instability was
+        # entirely the weighting, not the physics.
+        #
+        # The statistically correct weight for combining independent estimates
+        # of the same slope is INVERSE VARIANCE, 1/se^2, and the per-aperture
+        # slope standard error is already available from its own fit. It
+        # discriminates by three orders of magnitude where the old weight
+        # discriminated by ten percent, and it needs no tuning constants.
+        use_iv = any(np.isfinite(c.get("se_slope", np.inf)) for c in cands)
         for c in cands:
             base = max(c.get("z_baseline", 0.0), 1e-6)
-            q = max(c["lin"], 0.0) if c["n_zones"] >= 3 else 0.35
-            w = base * (0.25 + q) * np.sqrt(max(c["dif_energy"], 0.0))
+            if use_iv:
+                se = c.get("se_slope", np.inf)
+                w = 1.0 / max(se * se, 1e-12) if np.isfinite(se) else 0.0
+            else:
+                # every aperture has only two zones (N=5), so no residual exists
+                # to estimate a standard error from; fall back to the heuristic
+                q = max(c["lin"], 0.0) if c["n_zones"] >= 3 else 0.35
+                w = base * (0.25 + q) * np.sqrt(max(c["dif_energy"], 0.0))
             lag_w += w * c["lag"]
             slope_w += w * (c["slope"] if c["n_zones"] >= 3 else c["lag"])
             # DEFECT 44, FIXED. `lin` used to be averaged with w, but w CONTAINS

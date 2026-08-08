@@ -116,7 +116,7 @@ def main():
             c[r["truth"]][r[key]] += 1
         return c
 
-    out = dict(config=dict(n_strip=N_STRIP, span=SPAN, z_center=Z_CENTER,
+    out = dict(config=dict(model_version=ds.MODEL_VERSION, n_strip=N_STRIP, span=SPAN, z_center=Z_CENTER,
                            snr=SNR, T=T, motions=list(MOTIONS),
                            n_trial=N_TRIAL, seed0=SEED0),
                per_motion={}, overall={})

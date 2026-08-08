@@ -104,7 +104,7 @@ def main():
                 print(f"[m2] {k+1}/{len(jobs)}  {el/60:.1f} min  "
                       f"eta {(el/(k+1)*(len(jobs)-k-1))/60:.1f} min", flush=True)
 
-    out = {"config": dict(n_strip=N_STRIP, span=SPAN, snr=SNR, T=T,
+    out = {"config": dict(model_version=ds.MODEL_VERSION, n_strip=N_STRIP, span=SPAN, snr=SNR, T=T,
                           amps=list(AMPS), grads=list(GRADS),
                           n_trial=N_TRIAL, classes=list(CLASSES))}
     grid = {}

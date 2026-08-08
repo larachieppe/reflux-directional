@@ -29,7 +29,7 @@ table.mm-t th{background:#eef3f6}
 </style></head><body>
 <h1>Materials &amp; Methods</h1>
 <p class="sub">Directional bioimpedance detection of vesicoureteral reflux &middot;
-generated 2026-08-07 &middot; commit <code>145163b</code></p>
+generated 2026-08-08 &middot; commit <code>5dfb634</code></p>
 <p>Parameters below are introspected from the model module and from the metrics
 file each study wrote, not transcribed by hand.</p>
 
@@ -167,7 +167,7 @@ motion arms, which hid the degradation the study existed to measure.</p>
 <p>The z acceptance window for electrode facets scales with pitch, and placement
 asserts that no two electrodes share a boundary facet: at N = 12 on a 12 cm span
 a fixed window would let neighbours overlap, which is not a realisable array.</p>
-<h4>Provenance</h4><dl class='mm'><dt>Source</dt><dd><code>run_directional.py</code></dd><dt>Metrics file</dt><dd><code>metrics_directional.json</code></dd><dt>Runtime</dt><dd>103 min</dd></dl></div><div class='methods'><h3>Materials &amp; methods &mdash; Study 2: Locked design characterisation</h3>
+<h4>Provenance</h4><dl class='mm'><dt>Source</dt><dd><code>run_directional.py</code></dd><dt>Metrics file</dt><dd><code>metrics_directional.json</code></dd><dt>Runtime</dt><dd>86 min</dd></dl></div><div class='methods'><h3>Materials &amp; methods &mdash; Study 2: Locked design characterisation</h3>
 <h4>Question</h4>
 <p>With the configuration locked, how does it behave across the full motion
 range, and what does its confusion matrix look like at a defensible operating
@@ -189,7 +189,7 @@ chance floor stated. The confusion matrix is evaluated at a <b>disclosed
 90%-specificity threshold</b>. Reporting at the median instead had capped
 apparent specificity at 66.7% — an artefact of the threshold, not the
 classifier.</p>
-<h4>Provenance</h4><dl class='mm'><dt>Source</dt><dd><code>run_design.py</code></dd><dt>Metrics file</dt><dd><code>metrics_design.json</code></dd><dt>Runtime</dt><dd>75 min</dd></dl></div><div class='methods'><h3>Materials &amp; methods &mdash; Study 3: Strip placement over the ureterovesical junction</h3>
+<h4>Provenance</h4><dl class='mm'><dt>Source</dt><dd><code>run_design.py</code></dd><dt>Metrics file</dt><dd><code>metrics_design.json</code></dd><dt>Runtime</dt><dd>50 min</dd></dl></div><div class='methods'><h3>Materials &amp; methods &mdash; Study 3: Strip placement over the ureterovesical junction</h3>
 <h4>Question</h4>
 <p>Earlier runs suggested grades I–II were intrinsically undetectable. That
 conclusion was suspect, because the strip's axial centre was never actually
@@ -211,7 +211,7 @@ the short retrograde path of a low-grade bolus recovers it.</p>
 
 <h4>Principal result</h4>
 <p>Grades I–II are <b>not</b> intrinsically undetectable. Their detectability is governed almost entirely by where the strip sits relative to the ureterovesical junction, on identical physics and an identical estimator.</p>
-<h4>Provenance</h4><dl class='mm'><dt>Source</dt><dd><code>run_placement.py</code></dd><dt>Metrics file</dt><dd><code>metrics_placement.json</code></dd><dt>Runtime</dt><dd>66 min</dd></dl></div><div class='methods'><h3>Materials &amp; methods &mdash; Study 4: Misplacement tolerance</h3>
+<h4>Provenance</h4><dl class='mm'><dt>Source</dt><dd><code>run_placement.py</code></dd><dt>Metrics file</dt><dd><code>metrics_placement.json</code></dd><dt>Runtime</dt><dd>31 min</dd></dl></div><div class='methods'><h3>Materials &amp; methods &mdash; Study 4: Misplacement tolerance</h3>
 <h4>Question</h4>
 <p>Study 3 found a placement optimum. A placement that only works when perfectly
 aligned is not a product: the strip is applied by a parent or nurse, to a child
@@ -219,7 +219,7 @@ who will not hold still, against a landmark — the ureterovesical junction — 
 is not externally visible. How much misalignment can the design absorb?</p>
 
 <h4>Design</h4>
-<dl class='mm'><dt>Centre position</dt><dd>inherited from Study 3's best low-grade placement: 10 cm span at z = 0.34</dd><dt>Offsets applied (cm)</dt><dd>-2, -1, +0, +1, +2</dd><dt>Grades</dt><dd>1, 2, 3, 4, 5</dd><dt>Motion</dt><dd>0, 0.3</dd><dt>Trials per cell</dt><dd>32</dd></dl>
+<dl class='mm'><dt>Centre position</dt><dd>inherited from Study 3's best low-grade placement: 12 cm span at z = 0.36</dd><dt>Offsets applied (cm)</dt><dd>-2, -1, +0, +1, +2</dd><dt>Grades</dt><dd>1, 2, 3, 4, 5</dd><dt>Motion</dt><dd>0, 0.3</dd><dt>Trials per cell</dt><dd>32</dd></dl>
 <p class="mm-note">The optimum is <b>read from</b> <code>metrics_placement.json</code>
 rather than hard-coded, so this study cannot silently test a stale position if
 Study 3 is re-run.</p>
@@ -235,7 +235,7 @@ accuracy.</p>
 the claim that low-grade reflux is detectable. It licenses the claim that the
 design needs a landmark, a longer strip, or an alignment aid. That open trade is
 what Study 5 was built to resolve.</p>
-<h4>Provenance</h4><dl class='mm'><dt>Source</dt><dd><code>run_tolerance.py</code></dd><dt>Metrics file</dt><dd><code>metrics_tolerance.json</code></dd><dt>Runtime</dt><dd>34 min</dd></dl></div><div class='methods'><h3>Materials &amp; methods &mdash; Study 5: Placement precision across a simulated cohort</h3>
+<h4>Provenance</h4><dl class='mm'><dt>Source</dt><dd><code>run_tolerance.py</code></dd><dt>Metrics file</dt><dd><code>metrics_tolerance.json</code></dd><dt>Runtime</dt><dd>16 min</dd></dl></div><div class='methods'><h3>Materials &amp; methods &mdash; Study 5: Placement precision across a simulated cohort</h3>
 <h4>Question</h4>
 <p>Across a cohort where <i>every</i> child is imperfectly measured, what
 fraction is detected — and what fraction is <b>systematically unmeasurable</b>,
@@ -245,7 +245,7 @@ failing on every void, for whom repeat observation never helps?</p>
 physical and cannot be run in simulation. This is its simulation analogue.</div>
 
 <h4>Design</h4>
-<dl class='mm'><dt>Placement arms</dt><dd>10 cm @ z=0.34 (short, over the UVJ); 16 cm @ z=0.50 (long, mid-torso)</dd><dt>Placement error &sigma; (cm)</dt><dd>0, 0.5, 1, 2</dd><dt>Simulated children per cell</dt><dd>48</dd><dt>Voids per child</dt><dd>6</dd><dt>Motion (cm)</dt><dd>0.3</dd><dt>Total trials</dt><dd>2,304</dd></dl>
+<dl class='mm'><dt>Placement arms</dt><dd>12 cm @ z=0.36 (best low-grade placement); 16 cm @ z=0.50 (long, mid-torso)</dd><dt>Placement error &sigma; (cm)</dt><dd>0, 0.5, 1, 2</dd><dt>Simulated children per cell</dt><dd>48</dd><dt>Voids per child</dt><dd>6</dd><dt>Motion (cm)</dt><dd>0.3</dd><dt>Total trials</dt><dd>2,304</dd></dl>
 
 <h4>The design choice that makes this study mean anything</h4>
 <p><b>One placement error is drawn per child and shared across all of that
@@ -262,7 +262,7 @@ fraction of refluxing children <b>never detected on any void</b>, and the same
 restricted to grades I–II. The two placement arms answer the open trade from
 Study 4: whether a longer strip buys positional margin at the cost of peak
 low-grade accuracy.</p>
-<h4>Provenance</h4><dl class='mm'><dt>Source</dt><dd><code>run_precision.py</code></dd><dt>Metrics file</dt><dd><code>metrics_precision.json</code></dd><dt>Runtime</dt><dd>240 min</dd></dl></div><div class='methods'><h3>Materials &amp; methods &mdash; Study 6: Non-rigid respiratory motion</h3>
+<h4>Provenance</h4><dl class='mm'><dt>Source</dt><dd><code>run_precision.py</code></dd><dt>Metrics file</dt><dd><code>metrics_precision.json</code></dd><dt>Runtime</dt><dd>44 min</dd></dl></div><div class='methods'><h3>Materials &amp; methods &mdash; Study 6: Non-rigid respiratory motion</h3>
 <h4>Question</h4>
 <p>Every motion result in Studies 1–5 used a <b>rigid</b> translation: one
 displacement applied identically to body and bolus. That is precisely the
@@ -294,7 +294,7 @@ reflux during breathing is unusable regardless of how well it scores on real
 events. Secondary endpoints are direction accuracy on real events, and whether
 the abstain gate catches breathing artefact or whether breathing produces waves
 coherent enough to pass it.</p>
-<h4>Provenance</h4><dl class='mm'><dt>Source</dt><dd><code>run_motion2.py</code></dd><dt>Metrics file</dt><dd><code>metrics_motion2.json</code></dd><dt>Runtime</dt><dd>51 min</dd></dl></div><div class='methods'><h3>Materials &amp; methods &mdash; Verification: Numerical verification of the forward model</h3>
+<h4>Provenance</h4><dl class='mm'><dt>Source</dt><dd><code>run_motion2.py</code></dd><dt>Metrics file</dt><dd><code>metrics_motion2.json</code></dd><dt>Runtime</dt><dd>39 min</dd></dl></div><div class='methods'><h3>Materials &amp; methods &mdash; Verification: Numerical verification of the forward model</h3>
 <h4>Question</h4>
 <p>Every result in this project rests on the forward solve being correct, and that had been
 asserted rather than demonstrated. These four checks need no patient data and no new
@@ -337,7 +337,7 @@ meshes; noise is excluded because this measures discretisation error and injecte
 noise would swamp it.</p>
 <table class="mm-t"><caption>Refinement sequence</caption>
 <tr><th>rings / layers</th><th>nodes</th><th>mean |Z|</th><th>|Z| error</th>
-<th>slope</th><th>slope error</th><th>decision</th></tr><tr><td>4 / 11</td><td>704</td><td>0.3261</td><td>21.2%</td><td>+1.409</td><td>3.62%</td><td>+1</td></tr><tr><td>5 / 13</td><td>1,235</td><td>0.4737</td><td>76.0%</td><td>+1.39</td><td>2.22%</td><td>+1</td></tr><tr><td>6 / 17</td><td>2,261</td><td>0.3024</td><td>12.4%</td><td>+1.406</td><td>3.45%</td><td>+1</td></tr><tr><td>7 / 21</td><td>3,717</td><td>0.2383</td><td>11.4%</td><td>+1.369</td><td>0.71%</td><td>+1</td></tr><tr><td>8 / 25</td><td>5,675</td><td>0.2691</td><td>0.0%</td><td>+1.36</td><td>0.00%</td><td>+1</td></tr></table>
+<th>slope</th><th>slope error</th><th>decision</th></tr><tr><td>4 / 11</td><td>704</td><td>0.5609</td><td>23.4%</td><td>+1.443</td><td>1.05%</td><td>+1</td></tr><tr><td>5 / 13</td><td>1,235</td><td>0.7682</td><td>69.0%</td><td>+1.919</td><td>34.33%</td><td>+1</td></tr><tr><td>6 / 17</td><td>2,261</td><td>0.5334</td><td>17.4%</td><td>+1.411</td><td>1.20%</td><td>+1</td></tr><tr><td>7 / 21</td><td>3,717</td><td>0.5168</td><td>13.7%</td><td>+1.861</td><td>30.28%</td><td>+1</td></tr><tr><td>8 / 25</td><td>5,675</td><td>0.4545</td><td>0.0%</td><td>+1.428</td><td>0.00%</td><td>+1</td></tr></table>
 
 <h4>V4 &mdash; Tetrapolar contact-impedance immunity</h4>
 <p>The claim that contact impedance "largely drops out" of a tetrapolar
@@ -351,5 +351,5 @@ U(5, 20).</p>
 
 <h4>How results were reached</h4>
 <dl class='mm'><dt>Reciprocity criterion</dt><dd>a direct sparse solve should hold reciprocity to near machine precision; anything above ~1e-8 indicates an assembly error</dd><dt>Convergence criterion</dt><dd>monotone decrease of the slope error toward the finest mesh, and an invariant decision across the whole sequence</dd><dt>Rejection factor</dt><dd>mean relative peak-to-peak spread of the bipolar proxy divided by that of the tetrapolar measurement, per zone</dd></dl>
-<h4>Provenance</h4><dl class='mm'><dt>Source</dt><dd><code>verify_forward.py</code></dd><dt>Metrics file</dt><dd><code>metrics_verify.json</code></dd><dt>Runtime</dt><dd>1 min</dd></dl></div>
+<h4>Provenance</h4><dl class='mm'><dt>Source</dt><dd><code>verify_forward.py</code></dd><dt>Metrics file</dt><dd><code>metrics_verify.json</code></dd><dt>Runtime</dt><dd>0 min</dd></dl></div>
 </body></html>

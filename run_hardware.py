@@ -171,7 +171,7 @@ def main():
     with Pool(nproc, initializer=_init) as pool:
         recs = list(pool.imap_unordered(_one, jobs, chunksize=8))
 
-    out = dict(config=dict(n_strip=N_STRIP, span=SPAN, z_center=Z_CENTER, snr=SNR,
+    out = dict(config=dict(model_version=ds.MODEL_VERSION, n_strip=N_STRIP, span=SPAN, z_center=Z_CENTER, snr=SNR,
                            motion=MOTION, frames=list(FRAMES), n_dead=list(N_DEAD),
                            dead_where=list(DEAD_WHERE), n_trial=N_TRIAL,
                            seed0=SEED0),

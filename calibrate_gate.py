@@ -98,7 +98,7 @@ def main():
     best = max(sweep, key=lambda s: s["youden"])
 
     out = dict(
-        config=dict(n_strip=N_STRIP, span=SPAN, z_center=Z_CENTER, snr=SNR, T=T,
+        config=dict(model_version=ds.MODEL_VERSION, n_strip=N_STRIP, span=SPAN, z_center=Z_CENTER, snr=SNR, T=T,
                     motions=list(MOTIONS), n_per=N_PER, seed_block=SEED0,
                     statistic="adjusted R^2 of arrival time vs zone height"),
         n_travelling=int(trav.size), n_empty=int(empt.size),

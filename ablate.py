@@ -131,7 +131,7 @@ def main():
           f"{len(ARMS)*len(jobs)} forward runs", flush=True)
 
     nproc = max(1, min(3, (os.cpu_count() or 4) - 2))
-    out = {"config": dict(n_strip=N_STRIP, span=SPAN, z_center=Z_CENTER, snr=SNR,
+    out = {"config": dict(model_version=ds.MODEL_VERSION, n_strip=N_STRIP, span=SPAN, z_center=Z_CENTER, snr=SNR,
                           T=T, motions=list(MOTIONS), n_trial=N_TRIAL,
                           seed0=SEED0,
                           arms=[dict(name=a[0], legacy_mesh=a[1], legacy_fat=a[2],

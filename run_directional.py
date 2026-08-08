@@ -234,7 +234,7 @@ def main():
     def sel(**kw):
         return [r for r in recs if all(r[k] == v for k, v in kw.items())]
 
-    out = {"config": dict(span=SPAN, counts=COUNTS, motion=MOTION, snrs=SNRS,
+    out = {"config": dict(model_version=ds.MODEL_VERSION, span=SPAN, counts=COUNTS, motion=MOTION, snrs=SNRS,
                           spans=SPANS, T=T, n_trial=N_TRIAL, n_grade=N_GRADE,
                           n_auc=N_AUC, n_sec=N_SEC, freqs=FREQS_USED,
                           feature_names=ds.FEATURE_NAMES,

@@ -130,7 +130,7 @@ def main():
                 print(f"[tol] {k+1}/{len(jobs)}  {el/60:.1f} min  "
                       f"eta {(el/(k+1)*(len(jobs)-k-1))/60:.1f} min", flush=True)
 
-    out = {"config": dict(n_strip=N_STRIP, span=SPAN, z_center=ZC0, snr=SNR,
+    out = {"config": dict(model_version=ds.MODEL_VERSION, n_strip=N_STRIP, span=SPAN, z_center=ZC0, snr=SNR,
                           offsets_cm=list(OFFSETS_CM),
                           height=HEIGHT, grades=list(GRADES),
                           motion=list(MOTION), n_trial=N_TRIAL)}

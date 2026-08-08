@@ -194,7 +194,7 @@ def main():
                 print(f"[design] {k+1}/{len(jobs)}  {el/60:.1f} min  "
                       f"eta {(el/(k+1)*(len(jobs)-k-1))/60:.1f} min", flush=True)
 
-    out = {"config": dict(n_strip=N_STRIP, span=SPAN, z_center=Z_CENTER,
+    out = {"config": dict(model_version=ds.MODEL_VERSION, n_strip=N_STRIP, span=SPAN, z_center=Z_CENTER,
                           snr=SNR, T=T,
                           channels=2 * N_STRIP, motion=MOTION, n_op=N_OP,
                           n_grade=N_GRADE, n_subj=N_SUBJ, k_events=K_EVENTS,

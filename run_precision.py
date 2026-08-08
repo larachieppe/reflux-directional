@@ -202,7 +202,7 @@ def main():
                 print(f"[prec] {len(recs)}/{total}  {el/60:.1f} min  "
                       f"eta {(el/(i+1)*(len(jobs)-i-1))/60:.1f} min", flush=True)
 
-    out = {"config": dict(n_strip=N_STRIP, snr=SNR, motion=MOTION, T=T,
+    out = {"config": dict(model_version=ds.MODEL_VERSION, n_strip=N_STRIP, snr=SNR, motion=MOTION, T=T,
                           habitus=HABITUS,
                           k_events=K_EVENTS, n_child=N_CHILD,
                           sigmas=list(SIGMAS), configs=CONFIGS)}

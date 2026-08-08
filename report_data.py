@@ -192,27 +192,50 @@ def _best_key():
 
 
 def _rows_place():
-    pk = sorted(PG, key=lambda k: -(PG[k]["g1_m0.0"]["reflux_acc"]
-                                    if PG[k]["g1_m0.0"]["reflux_acc"] ==
-                                    PG[k]["g1_m0.0"]["reflux_acc"] else 0))
-    return "\n".join(
-        f"<tr{' class=hi' if k == _best_key() else (' class=bad' if k == '16_0.50' else '')}>"
-        f"<td>{PG[k]['span']:.0f} cm @ z={PG[k]['z_center']:.2f}</td>"
-        f"<td>{PG[k]['g1_m0.0']['zones_crossed']}</td>"
-        + "".join(f"<td>{p0(PG[k][f'g{g}_m0.0']['reflux_acc'])}</td>" for g in (1, 2, 3, 4, 5))
-        + "</tr>" for k in pk)
+    """Placement grid. Configurations whose strip does not fit on the body are
+    recorded by the study as untestable and carry no grade cells, so they are
+    rendered as such rather than crashing the table or silently vanishing."""
+    def _key(k):
+        v = PG[k].get("g1_m0.0")
+        a = v["reflux_acc"] if v else float("nan")
+        return -(a if a == a else -1)
+    live = [k for k in PG if not PG[k].get("untestable")]
+    dead = [k for k in PG if PG[k].get("untestable")]
+    rows = []
+    for k in sorted(live, key=_key):
+        cls = " class=hi" if k == _best_key() else (" class=bad" if k == "16_0.50" else "")
+        rows.append(
+            f"<tr{cls}><td>{PG[k]['span']:.0f} cm @ z={PG[k]['z_center']:.2f}</td>"
+            f"<td>{PG[k]['g1_m0.0']['zones_crossed']}</td>"
+            + "".join(f"<td>{p0(PG[k][f'g{g}_m0.0']['reflux_acc'])}</td>"
+                      for g in (1, 2, 3, 4, 5)) + "</tr>")
+    for k in sorted(dead):
+        rows.append(
+            f"<tr><td>{PG[k]['span']:.0f} cm @ z={PG[k]['z_center']:.2f}</td>"
+            f"<td colspan='6'><span class='sub'>not testable &mdash; "
+            f"{PG[k].get('reason','strip leaves the body')}</span></td></tr>")
+    return "\n".join(rows)
 
 
 def _rows_tol():
     if not T:
         return ""
     TG = T["grid"]
-    return "\n".join(
-        f"<tr{' class=hi' if o == 0.0 else ''}><td>{o:+.0f} cm</td>"
-        + "".join(f"<td>{p0(TG[f'{o:+.0f}'][f'g{g}_m0.0']['reflux_acc'])}</td>"
-                  for g in (1, 2, 3, 4, 5))
-        + f"<td>{p0(TG[f'{o:+.0f}']['low_grade_still']['abstain'])}</td></tr>"
-        for o in T["config"]["offsets_cm"])
+    rows = []
+    for o in T["config"]["offsets_cm"]:
+        cell = TG.get(f"{o:+.0f}", {})
+        if cell.get("untestable") or "low_grade_still" not in cell:
+            rows.append(f"<tr><td>{o:+.0f} cm</td><td colspan='6'>"
+                        f"<span class='sub'>not testable &mdash; "
+                        f"{cell.get('reason','strip leaves the body at this offset')}"
+                        f"</span></td></tr>")
+            continue
+        rows.append(
+            f"<tr{' class=hi' if o == 0.0 else ''}><td>{o:+.0f} cm</td>"
+            + "".join(f"<td>{p0(cell[f'g{g}_m0.0']['reflux_acc'])}</td>"
+                      for g in (1, 2, 3, 4, 5))
+            + f"<td>{p0(cell['low_grade_still']['abstain'])}</td></tr>")
+    return "\n".join(rows)
 
 
 def _rows_verify():

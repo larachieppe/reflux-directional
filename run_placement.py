@@ -162,7 +162,7 @@ def main():
                 print(f"[place] {k+1}/{len(jobs)}  {el/60:.1f} min  "
                       f"eta {(el/(k+1)*(len(jobs)-k-1))/60:.1f} min", flush=True)
 
-    out = {"config": dict(n_strip=N_STRIP, snr=SNR, T=T, height=HEIGHT,
+    out = {"config": dict(model_version=ds.MODEL_VERSION, n_strip=N_STRIP, snr=SNR, T=T, height=HEIGHT,
                           configs=CONFIGS, grades=list(GRADES),
                           motion=list(MOTION), n_trial=N_TRIAL)}
     grid = {}
