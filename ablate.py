@@ -44,10 +44,11 @@ N_TRIAL = 60                   # per (arm, motion, class)
 SEED0 = 7_000_000              # disjoint from every study and from the gate calib
 
 # (name, legacy_mesh, legacy_fat, legacy_lin, gate)
-ARMS = [
-    # Full factorial would be 4 hours. These six attribute every fix: each
-    # single-fix arm differences against all-old, and the last pair splits the
-    # gate correction into its statistic and its threshold.
+# Two arm sets. ABLATE_SET=main attributes mesh / fat / gate against all-old;
+# ABLATE_SET=gate isolates the two halves of the gate correction on the corrected
+# physics, which the first run could not do because decide_direction bound
+# lin_gate at definition time and the threshold never actually varied.
+_MAIN = [
     ("all-old",         True,  True,  True,  0.35),
     ("mesh-fixed",      False, True,  True,  0.35),
     ("fat-fixed",       True,  False, True,  0.35),
@@ -55,6 +56,15 @@ ARMS = [
     ("all-new",         False, False, False, 0.16),
     ("all-new/oldthr",  False, False, False, 0.35),
 ]
+# corrected mesh and fat throughout; only the gate statistic and threshold move
+_GATE = [
+    ("oldstat+oldthr",  False, False, True,  0.35),
+    ("oldstat+newthr",  False, False, True,  0.16),
+    ("newstat+oldthr",  False, False, False, 0.35),
+    ("newstat+newthr",  False, False, False, 0.16),
+]
+ARMS = _GATE if os.environ.get("ABLATE_SET") == "gate" else _MAIN
+OUT = os.environ.get("ABLATE_OUT", "metrics_ablation.json")
 
 _STATE = {}
 
@@ -147,8 +157,8 @@ def main():
               f"({out['arms'][name]['minutes']} min)", flush=True)
 
     out["runtime_min"] = (time.time() - t0) / 60.0
-    json.dump(out, open("metrics_ablation.json", "w"), indent=1)
-    print(f"[abl] done in {out['runtime_min']:.1f} min -> metrics_ablation.json",
+    json.dump(out, open(OUT, "w"), indent=1)
+    print(f"[abl] done in {out['runtime_min']:.1f} min -> {OUT}",
           flush=True)
 
 

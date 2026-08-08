@@ -28,7 +28,10 @@ import directional_sim as ds
 # freqs=[50000.0] in its own config -- a figure that was simply false, and one
 # the report quoted. The frequencies are left as they actually are and the config
 # now records what the solver actually used.
-FREQS_USED = list(inspect.signature(ds.simulate_trial).parameters["freqs"].default)
+# simulate_trial now resolves freqs at CALL time (freqs=None -> ds.FREQS), so
+# the honest record of what the solver used is simply ds.FREQS. Reading the
+# signature default returns None now and would raise.
+FREQS_USED = [float(x) for x in ds.FREQS]
 
 SPAN = 12.0                     # cm of usable flank (anatomy-capped)
 COUNTS = [4, 5, 6, 8, 10, 12]   # electrodes per strip

@@ -336,7 +336,7 @@ def bolus_path(world, anat, label, grade, side, T):
     return cs, frac
 
 
-def simulate_trial(world, label, rng, grade=3, side=+1, T=16, freqs=FREQS,
+def simulate_trial(world, label, rng, grade=3, side=+1, T=16, freqs=None,
                    snr_db=60.0, motion_amp=0.0, amp=1.0, anat=None,
                    motion_grad=0.0, breath_hz=0.30):
     """Return Z tensor (T, F, n_zones) complex, baseline-subtracted + noisy.
@@ -348,6 +348,8 @@ def simulate_trial(world, label, rng, grade=3, side=+1, T=16, freqs=FREQS,
     thing limiting the measurement. Passing a fixed anat lets that assumption be
     tested rather than asserted.
     """
+    if freqs is None:
+        freqs = FREQS                    # resolved NOW, not bound at def time
     if anat is None:
         anat = draw_anatomy(world, rng)
     disp = draw_motion(world, rng, T, motion_amp)
@@ -667,8 +669,17 @@ def direction_features(dZ, world):
 LIN_GATE = 0.16
 
 
-def decide_direction(feat, lin_gate=LIN_GATE):
+def decide_direction(feat, lin_gate=None):
     """Return (+1 retrograde, -1 antegrade, 0 ABSTAIN) and the strip that fired.
+
+    `lin_gate=None` means "use the module-level LIN_GATE, as it is NOW". It used
+    to default to `lin_gate=LIN_GATE`, which Python binds once at definition
+    time, so rebinding the module attribute could never reach this function. That
+    silently disabled the gate arms of the first ablation: setting
+    ds.LIN_GATE per arm changed nothing, and two arms returned byte-identical
+    results across 480 trials. The same bound-default pattern had already made
+    the FREQS override a no-op elsewhere in this file, so both are now
+    resolved at call time.
 
     The abstain state is not optional. Without it an EMPTY window is forced to a
     call, and measured on no-flow windows the detector said "retrograde" 53.8% of
@@ -677,6 +688,8 @@ def decide_direction(feat, lin_gate=LIN_GATE):
     real travelling event from an empty window cleanly (mean ~0.88 vs ~0.24), so
     it is used as the gate.
     """
+    if lin_gate is None:
+        lin_gate = LIN_GATE              # resolved NOW, not bound at def time
     s = max((0, 1), key=lambda k: feat[k].get("dif_energy", 0.0)
             if feat[k]["defined"] else feat[k]["energy"])
     f = feat[s]
