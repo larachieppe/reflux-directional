@@ -83,6 +83,14 @@ def _gm(g, i):
     return sum(v) / len(v)
 
 
+def _defno(prefix):
+    """1-based index of a defect in the log, looked up by title prefix."""
+    for i, d in enumerate(DEFECTS, 1):
+        if d[0].startswith(prefix):
+            return i
+    return "?"
+
+
 VALS = {
     "n_strip":            lambda: C["n_strip"],
     "channels":           lambda: C["channels"],
@@ -116,8 +124,22 @@ VALS = {
     # Counted from the log itself. The prose used to state these by hand and had
     # already drifted twice -- the front matter said fifteen while the table
     # listed sixteen, and the defect-log paragraph said fourteen.
+    # Defect numbers cited in prose must be DERIVED, not typed. Hard-coding them
+    # is how defect 48 happened, and the first draft of the paragraph that
+    # describes defect 48 got its own cross-references off by one.
+    "defno_mesh":         lambda: _defno("The mesh was non-conforming"),
+    "defno_electrode":    lambda: _defno("Two thirds of every electrode"),
+    "defno_fat":          lambda: _defno("Motion slid the fat layer"),
+    "defno_gate":         lambda: _defno("Abstain gate statistic"),
     "n_defects":          lambda: len(DEFECTS),
-    "n_defects_code":     lambda: sum(1 for d in DEFECTS if d[1] != "reporting"),
+    # DEFECT 42: this counted everything that was not "reporting" and the prose
+    # described the remainder as "the model, the estimator or the statistics" --
+    # but the log also carries "physics", "tooling" and "estimator" classes, so the
+    # sentence named three categories while the number counted six.
+    "n_defects_code":     lambda: sum(1 for d in DEFECTS
+                                      if d[1] in ("model", "estimator", "stats")),
+    "n_defects_other":    lambda: sum(1 for d in DEFECTS
+                                      if d[1] in ("physics", "tooling")),
     "n_defects_reporting": lambda: sum(1 for d in DEFECTS if d[1] == "reporting"),
 }
 
@@ -154,12 +176,27 @@ def _rows_k():
         f"<td>{p0(S['chance_k'][str(k)])}</td></tr>" for k in range(1, K + 1))
 
 
+def _best_key():
+    """Grid key of the CURRENT best placement, read from the study output.
+
+    DEFECT 41: this was hard-coded to '10_0.28', so the only visual
+    recommendation cue in the placement table kept green-highlighting a
+    placement the project had already withdrawn as chosen by a gameable
+    one-sided metric.
+    """
+    try:
+        b = P["best_low_grade"]
+        return f"{b['span']:.0f}_{b['z_center']:.2f}"
+    except Exception:
+        return ""
+
+
 def _rows_place():
     pk = sorted(PG, key=lambda k: -(PG[k]["g1_m0.0"]["reflux_acc"]
                                     if PG[k]["g1_m0.0"]["reflux_acc"] ==
                                     PG[k]["g1_m0.0"]["reflux_acc"] else 0))
     return "\n".join(
-        f"<tr{' class=hi' if k == '10_0.28' else (' class=bad' if k == '16_0.50' else '')}>"
+        f"<tr{' class=hi' if k == _best_key() else (' class=bad' if k == '16_0.50' else '')}>"
         f"<td>{PG[k]['span']:.0f} cm @ z={PG[k]['z_center']:.2f}</td>"
         f"<td>{PG[k]['g1_m0.0']['zones_crossed']}</td>"
         + "".join(f"<td>{p0(PG[k][f'g{g}_m0.0']['reflux_acc'])}</td>" for g in (1, 2, 3, 4, 5))
@@ -312,6 +349,34 @@ DEFECTS = [
  ("breath_hz is a dead parameter", "model", "simulate_trial accepts breath_hz=0.30 but calls draw_motion(world, rng, T, motion_amp) without it. draw_motion hardcodes its own value, so the parameter has never influenced a single trial and no caller has ever set it.", "The breathing rate is not configurable and was never swept, while the report and the methods both described it as a model parameter. Distinct from the frequency no-op: a different parameter, a different function, and here the value is simply unreachable rather than shadowed by a bound default."),
  ("The breathing rate is not a rate", "model", "The term is sin(2*pi*0.30*t/4.0) with t indexed in FRAMES, giving 0.075 cycles per frame, and NO frame rate, timestep or trial duration is defined anywhere in the model. Over T=20 frames the trial contains 1.5 breathing cycles.", "The published figure of 0.30 Hz is unsupported -- it is a bare constant divided by 4, not a frequency. If a void is taken to be about 20 s, the modelled breathing is roughly 4.5 breaths per minute, some five times slower than a child at 20-30. Since Study 6 is entirely about respiratory motion, its stimulus may be far gentler than physiology."),
  ("Injected noise exceeds the stated SNR by ~1 dB", "model", "simulate_trial adds an independent term at sigma_n = 10^(-SNR/20) AND a zone-correlated term at 0.5*sigma_n. The real part therefore carries sqrt(1 + 0.25)*sigma_n = 1.118*sigma_n.", "Every SNR label is optimistic by 0.97 dB: the 60 dB arm actually runs at 59.03 dB. Small, but systematic across the whole SNR sweep, and it means the noise budget quoted for hardware is not the noise budget simulated. Distinct from the earlier defect where noise was derived from raw |Z| and added to a fractional quantity; this is the variance bookkeeping of the two components."),
+ ('The mesh was non-conforming', 'physics', 'make_cylinder ran a 3-D Delaunay over a structured, massively cospherical point cloud, then deleted the resulting exactly-flat tetrahedra as slivers. Those flat tets were the only thing gluing together the two sides of each degenerate planar cell, whose upper and lower halves use opposite diagonals.',
+  'THE most serious defect found. Measured: 10848 tets tiling the solid to a relative volume error of 0.0e+00 -- zero void, zero overlap -- yet 9296 faces had only ONE neighbouring tet, of which 7628 (82%) were strictly interior. Those are hanging faces, so the P1 space was not H1-conforming: the solve was not a Galerkin solution and refinement did not control the error. This is the likely cause of the absolute |Z| non-convergence previously recorded as an accepted limitation. Fixed by triangulating the disk once and splitting each extruded prism with a sorted-index rule; the mesh now has 1668 boundary facets, exactly the true prism surface, and zero interior.'),
+ ('Two thirds of every electrode was buried in tissue', 'physics', 'boundary_facets() is f2t[1] == -1, so it returned all 9296 torn faces. place_strips filters on rad > 0.80*R, and the crack faces reach radius 5.194 cm against a 5.481 cm apothem, so they passed.',
+  '61-63% of each electrode facet set, and 63-65% of its AREA, was interior tissue rather than skin. The CEM contact condition was imposed on a partly buried conductive slab shorting interior nodes, and electrode area diverged under refinement, so the mesh-convergence check could not converge in principle. Resolved by the conforming mesh: now 0% interior, and areas fall to a physical 2.6-12.5 cm2 from 7.2-35.1.'),
+ ('Motion slid the fat layer out from under the electrodes', 'model', 'base_sigma evaluated the fat/muscle boundary from the SHIFTED coordinates, so a body shift thinned or deleted the 0.99 cm subcutaneous shell beneath one strip.',
+  'The primary endpoint of the whole project is direction accuracy against motion, and the motion model was dominated by an artifact. The fat-boundary term alone produced a post-common-mode differential 16x to 320x larger than the entire corrected motion response, and at 0.3 cm it exceeded the whole grade-IV bolus signal by about sevenfold. Electrodes are mounted on skin and travel with it, so the boundary is now evaluated in the electrode-fixed frame and only the internal organs move.'),
+ ('Abstain gate statistic was an unadjusted R-squared', 'estimator', 'lin used the raw coefficient of determination, whose null expectation is 1/(nz-1): 0.50 for a 3-zone aperture against 0.11 for a 10-zone one.',
+  'A single fixed gate at 0.35 was a different test at every electrode count, sitting BELOW the noise expectation for small apertures and admitting empty windows roughly half the time at N=6. Now uses the adjusted R-squared, whose null expectation is 0 regardless of zone count, so one threshold means the same thing everywhere. Recalibrated on a dedicated seed block no study uses.'),
+ ('The gate statistic was a self-weighted average', 'estimator', 'The aperture fusion weight is base*(0.25+lin)*sqrt(energy), and lin was then averaged using that same weight, so lin was weighted by a function of itself.',
+  'Apertures that happened to fit well were given more say in deciding whether the fit was good, biasing the gate statistic upward by roughly Var(lin)/(0.25+mean(lin)) and letting through more empty windows than the same threshold on an honest mean. The lin fusion now uses a weight that cannot see lin.'),
+ ('lag and slope are the same number at small apertures', 'estimator', 'lag is the endpoint slope and slope is the least-squares slope. For an aperture with three evenly spaced zones the centre point contributes nothing to a centred LS fit, so the two are algebraically identical.',
+  'They were fused as two independent estimators, which double-counts one estimate at exactly the configurations where evidence is scarcest -- every contributing aperture at N=5 and N=6. The evidence is now averaged rather than summed when they are duplicates.'),
+ ('Unidentifiable lags resolved to a confident antegrade call', 'estimator', 'A constant zone series left _norm unnormalised at all-zero, making every correlation 0.0; np.argmax on a flat array returns index 0, which is the MOST NEGATIVE lag. Any exact plateau in the correlation did the same.',
+  'A degenerate window became a large negative lag, read downstream as a negative slope and therefore ANTEGRADE, rather than an abstention. The bias ran entirely toward calling children healthy, the direction that flatters specificity. Now returns NaN and the aperture is withdrawn.'),
+ ('The peak feature averaged in its own self-correlation', 'estimator', 'peaks[0] is xcorr_lag(ser[0], ser[0]) = 1.0 exactly, and peak was the mean over all zones including it.',
+  'Added a deterministic +1/nz offset that SHRANK with electrode count, so the published xcpeak feature carried a spurious inverse-N trend unrelated to the data. Now averages the cross terms only.'),
+ ('place_strips accepted end-cap facets and never checked the strip fits', 'physics', 'The lateral test was rad > 0.80*R, which a triangle on the z=0 or z=height disc passes despite facing along the axis. Nothing checked that the requested span and centre lie inside the body.',
+  'The -2 cm arm of the tolerance study pushed its bottom electrode onto the inferior cap, the most likely reason that arm inverts the grade ordering with grade V worst of all five. Cap facets are now excluded by normal, and an off-body request raises instead of silently degrading.'),
+ ('The verification gate read a key that no longer existed', 'reporting', 'The V1 summary tested d.get(quasistatic_ok), a key renamed to eqs_ok when the criterion was corrected, so .get returned None for every tissue.',
+  'The one automated gate in the forward-model verification reported EVERY tissue as failing quasi-static validity, the exact opposite of what the check computed.'),
+ ('Figure n2 stated the wrong denominators', 'reporting', 'The on-plot caption said n=48 children per cell. The plotted rates are over 24 refluxing children (left panel) and 14 with grades I-II (right).',
+  'The caption exists precisely to tell the reader how much per-cell noise to expect, and it understated the true n by 2x and 3.4x.'),
+ ('The placement table highlighted the retracted placement', 'reporting', 'The green highlight was hard-coded to the grid key 10_0.28.',
+  'The only visual recommendation cue in the placement table sat on the configuration the project had already withdrawn as chosen by a gameable one-sided metric. It now reads the current optimum from the study output.'),
+ ('The derived defect breakdown counted the wrong classes', 'reporting', 'n_defects_code counted everything not classed reporting, while the prose described the remainder as the model, the estimator or the statistics -- but the log also carries physics and tooling classes.',
+  'The one count advertised as counted-from-the-table-so-it-cannot-drift had itself drifted, naming three categories while summing six.'),
+ ('tetrapolar_zones documented a Wenner array it does not build', 'reporting', 'The docstring described electrodes at (k, k+m, k+2m, k+3m) with a zone count of sum(N-3m). The code builds a Schlumberger array: drive on (k, k+G) for odd G, sense on the single adjacent inner pair, count sum(N-G).',
+  'Wenner and Schlumberger have different depth sensitivities for the same footprint, so anyone sizing depth reach from the docstring got the wrong array. The stated count is also off by two at N=8, 9 actual against 7 claimed.'),
  ("Grade prevalence drawn uniformly", "stats", "run_precision drew grades with .choice([1,2,3,4,5]), giving 40% grades IV-V, while the project publishes GRADE_WEIGHTS (30/30/22/13/5, so 18% IV-V) as its prevalence model. sample_grade() existed but was never called anywhere in the repo.", "High grades are far easier to detect, so over-representing them by more than twice biased every sensitivity Study 5 reported UPWARD. Now draws from the declared model; re-running."),
 ]
 

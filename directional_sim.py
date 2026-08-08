@@ -153,7 +153,22 @@ class StripWorld:
         x = self.cent[:, 0] - shift[0] * w
         y = self.cent[:, 1] - shift[1] * w
         z = self.cent[:, 2] - shift[2] * w
-        r = np.hypot(x, y)
+        # DEFECT 52, FIXED. The fat/muscle boundary used to be computed from the
+        # SHIFTED coordinates, so "motion" slid the subcutaneous layer out from
+        # under the electrodes. The fat shell is only 0.99 cm thick here
+        # (r > 0.82R), and the shift reaches 91% of that at 0.9 cm and 202-303%
+        # at Study 6's 2-3 cm amplitudes -- so on one flank the fat was thinned to
+        # nothing and replaced by muscle, an 8x conductivity change (0.043 to
+        # 0.34 S/m) directly in series under the electrodes.
+        #
+        # That is not what body motion does. The electrodes are mounted ON the
+        # skin and travel with it, so the fat beneath a given electrode does not
+        # change. What moves relative to the array is the INTERNAL anatomy. The
+        # boundary is therefore now evaluated in the electrode-fixed frame, and
+        # only the organs below are displaced. Otherwise the dominant "motion"
+        # effect in every study was a large strip-asymmetric change in series
+        # tissue, dwarfing the ureter displacement the studies claim to measure.
+        r = np.hypot(self.cent[:, 0], self.cent[:, 1])
         sig = np.full(self.cent.shape[0], admittivity("muscle", f), complex)
         sig[r > 0.82 * self.R] = admittivity("fat", f)
         for sgn in (+1, -1):
@@ -383,9 +398,30 @@ def _norm(a):
     return a / s if s > 1e-12 else a
 
 
-def xcorr_lag(a, b, max_lag=None, upsample=8):
-    """Lag (in samples, positive => b lags a) by parabolic-interpolated peak."""
-    a, b = _norm(np.asarray(a, float)), _norm(np.asarray(b, float))
+def xcorr_lag(a, b, max_lag=None):
+    """Lag (in samples, positive => b lags a) by parabolic-interpolated peak.
+
+    Returns (nan, nan) when the lag is not identifiable.
+
+    DEFECT 48, FIXED. Two silent fallbacks both resolved to the MOST NEGATIVE
+    lag in the search range. A constant zone series left _norm's output
+    unnormalised at all-zero, making every correlation exactly 0.0, and
+    np.argmax on a flat array returns index 0, which is -max_lag. The same held
+    for any exact plateau in the correlation. A degenerate window was therefore
+    converted into a confident large-negative lag -- read downstream as a
+    negative slope, i.e. ANTEGRADE -- instead of an abstention. The bias ran
+    entirely toward calling healthy children healthy, which is the direction that
+    flatters specificity.
+
+    DEFECT 49, FIXED: the `upsample=8` parameter was never used in the body. It
+    misdescribed the estimator's temporal resolution in the one place a reader
+    would look. No caller ever passed it, so no published number changes.
+    """
+    a = np.asarray(a, float)
+    b = np.asarray(b, float)
+    if a.std() <= 1e-12 or b.std() <= 1e-12:
+        return float("nan"), float("nan")      # no lag exists in a flat series
+    a, b = _norm(a), _norm(b)
     n = len(a)
     if max_lag is None:
         # A bolus traversing the whole strip produces lags of order half the
@@ -400,6 +436,11 @@ def xcorr_lag(a, b, max_lag=None, upsample=8):
                          b[max(0, L):n - max(0, -L)]) / n
                   for L in lags])
     k = int(np.argmax(c))
+    # An argmax tie means the peak is not localised. Resolving it to index 0, the
+    # most negative lag, manufactured a confident antegrade call out of a
+    # plateau; report it as unidentifiable instead.
+    if np.count_nonzero(c >= c[k] - 1e-12) > 1:
+        return float("nan"), float(c[k])
     if 0 < k < len(c) - 1:                  # parabolic refinement
         y0, y1, y2 = c[k - 1], c[k], c[k + 1]
         d = y0 - 2 * y1 + y2
@@ -453,6 +494,12 @@ def _strip_aperture_stats(dZ, world, strip, m):
     tarr = np.zeros(nz); peaks = np.zeros(nz)
     for j in range(nz):
         tarr[j], peaks[j] = xcorr_lag(ser[0], ser[j])
+    # xcorr_lag now reports an unidentifiable lag as NaN rather than silently
+    # resolving it to the most negative lag (defect 48). If any zone is
+    # unidentifiable there is no travelling wave to fit, so the aperture is
+    # withdrawn rather than fitted through a hole.
+    if not np.all(np.isfinite(tarr)):
+        return dict(defined=False)
     dz = float(zz[-1] - zz[0])
     A = np.vstack([zz, np.ones_like(zz)]).T
     coef, *_ = np.linalg.lstsq(A, tarr, rcond=None)
@@ -461,7 +508,16 @@ def _strip_aperture_stats(dZ, world, strip, m):
         pred = A @ coef
         ss_res = float(((tarr - pred) ** 2).sum())
         ss_tot = float(((tarr - tarr.mean()) ** 2).sum())
-        lin = 1.0 - ss_res / ss_tot if ss_tot > 1e-12 else 0.0
+        r2 = 1.0 - ss_res / ss_tot if ss_tot > 1e-12 else 0.0
+        # DEFECT 46, FIXED: this was an UNADJUSTED R^2, whose expected value under
+        # pure noise is 1/(nz-1) -- 0.50 for a 3-zone aperture, 0.11 for a
+        # 10-zone one. A single fixed gate at 0.35 was therefore a completely
+        # different test at each electrode count: it sat BELOW the noise
+        # expectation for small apertures, admitting empty windows roughly half
+        # the time at N=6, and well above it for large ones. The adjusted R^2
+        # has expectation 0 under the null regardless of zone count, so one
+        # threshold means the same thing everywhere.
+        lin = 1.0 - (1.0 - r2) * (nz - 1) / max(nz - 2, 1)
     else:
         lin = 0.0                              # 2 points are trivially collinear
     # Quality must be energy PER ZONE, not total. A shallow aperture has more
@@ -470,8 +526,21 @@ def _strip_aperture_stats(dZ, world, strip, m):
     # which is exactly the one that cannot reach the ureter.
     per_zone = float(np.mean(np.sum(ser ** 2, axis=1)))
     z_baseline = float(zz[-1] - zz[0])          # lever arm available to the fit
+    # DEFECT 47, FIXED: peaks[0] is xcorr_lag(ser[0], ser[0]), the self
+    # correlation, which is identically 1.0. Averaging it in added a
+    # deterministic +1/nz offset that SHRANK with electrode count, so the
+    # published `xcpeak` feature carried a spurious inverse-N trend that had
+    # nothing to do with the data. Average the cross terms only.
+    peak = float(peaks[1:].mean()) if nz > 1 else float("nan")
+    # DEFECT 45: `lag` is the endpoint slope and `slope` is the least-squares
+    # slope. For nz <= 3 with evenly spaced zones these are ALGEBRAICALLY the
+    # same number (the centre point contributes nothing to a centred LS slope),
+    # so fusing them as "two independent estimators" double-counts one estimate
+    # at exactly the configurations where evidence is scarcest. Flagged so the
+    # fusion can weight accordingly rather than silently counting it twice.
     return dict(lag=float((tarr[-1] - tarr[0]) / max(dz, 1e-9)), slope=slope,
-                lin=float(np.clip(lin, -1, 1)), peak=float(peaks.mean()),
+                lag_is_slope=bool(nz <= 3),
+                lin=float(np.clip(lin, -1, 1)), peak=peak,
                 energy=raw_e, dif_energy=per_zone, z_baseline=z_baseline,
                 n_zones=nz, m=m, defined=True)
 
@@ -504,7 +573,8 @@ def direction_features(dZ, world):
         allser, _ = zone_series(dZ, world, s_i)
         raw_e = float(np.sum(allser ** 2)) if allser.shape[0] else 0.0
         cands = [c for c in (_strip_aperture_stats(dZ, world, s_i, m)
-                             for m in world.apertures) if c is not None]
+                             for m in world.apertures)
+                 if c is not None and c.get("defined")]
         if not cands:
             out[s_i] = dict(lag=0.0, slope=0.0, lin=0.0, peak=0.0, energy=raw_e,
                             dif_energy=0.0, n_zones=allser.shape[0], m=0,
@@ -515,26 +585,47 @@ def direction_features(dZ, world):
         # the same sign (end-to-end lag, and the least-squares arrival-time
         # slope); collapsing both to one fused scalar would emit duplicate
         # columns into the feature vector and distort the direction-only ablation.
-        tot_w, lag_w, slope_w, lin_w, dif_e = 0.0, 0.0, 0.0, 0.0, 0.0
+        tot_w, lag_w, slope_w, dif_e = 0.0, 0.0, 0.0, 0.0
+        lin_w, tot_wq = 0.0, 0.0
+        n_dup = 0
         for c in cands:
             base = max(c.get("z_baseline", 0.0), 1e-6)
             q = max(c["lin"], 0.0) if c["n_zones"] >= 3 else 0.35
             w = base * (0.25 + q) * np.sqrt(max(c["dif_energy"], 0.0))
             lag_w += w * c["lag"]
             slope_w += w * (c["slope"] if c["n_zones"] >= 3 else c["lag"])
-            lin_w += w * c["lin"]
+            # DEFECT 44, FIXED. `lin` used to be averaged with w, but w CONTAINS
+            # (0.25 + lin): the gate statistic was a self-weighted average of
+            # itself, biased upward by roughly Var(lin)/(0.25 + mean(lin)).
+            # Apertures that happened to fit well were handed more say in
+            # deciding whether the fit was good, so the abstain gate let through
+            # far more empty windows than the same threshold on an honest mean.
+            # The lin fusion now uses a weight that cannot see lin.
+            wq = base * np.sqrt(max(c["dif_energy"], 0.0))
+            lin_w += wq * c["lin"]
+            tot_wq += wq
             dif_e += c["dif_energy"]
             tot_w += w
+            n_dup += 1 if c.get("lag_is_slope") else 0
         if tot_w <= 0:
             best = max(cands, key=lambda c: c["dif_energy"])
             out[s_i] = dict(best, energy=raw_e, n_apertures=len(cands))
             continue
         best = max(cands, key=lambda c: c.get("z_baseline", 0.0) * max(c["lin"], 0.0))
+        # DEFECT 45. lag and slope are algebraically identical for any aperture
+        # with <= 3 evenly spaced zones, so summing both into the evidence counts
+        # one estimate twice -- worst at N=5 and N=6, where every contributing
+        # aperture is in that regime. When they are duplicates, average instead
+        # of summing so the evidence scale does not silently double.
+        all_dup = (n_dup == len(cands))
+        ev_fused = (0.5 if all_dup else 1.0) * (lag_w + slope_w) / tot_w
         out[s_i] = dict(lag=lag_w / tot_w, slope=slope_w / tot_w,
-                        lin=lin_w / tot_w, peak=best["peak"], energy=raw_e,
+                        lin=lin_w / max(tot_wq, 1e-12), peak=best["peak"],
+                        energy=raw_e,
                         dif_energy=dif_e, n_zones=best["n_zones"], m=best["m"],
                         n_apertures=len(cands), defined=True,
-                        fused_ev=(lag_w + slope_w) / tot_w)
+                        lag_slope_duplicated=all_dup,
+                        fused_ev=ev_fused)
     return out
 
 

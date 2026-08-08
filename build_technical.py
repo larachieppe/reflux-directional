@@ -82,7 +82,7 @@ objections that survived. That pass found real errors, including two in this
 report's own earlier text: the claim that reciprocity was an assumption-free
 validation of the forward operator, and the claim that contact impedance
 &ldquo;largely drops out&rdquo; of a tetrapolar measurement. Both are corrected
-here and in &sect;7.</p>
+here and in &sect;4.1 and &sect;8.</p>
 <ol class="toc">{''.join(toc)}</ol>
 """
     if missing:

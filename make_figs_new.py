@@ -82,9 +82,9 @@ axs[1].annotate("43% missed even at\nPERFECT placement",
 # 48 children per cell the per-cell noise is large, and the finding is the GAP
 # between the two placements, not the shape of either curve.
 for ax in axs:
-    ax.text(0.5, -0.30, "16 cm arm is non-monotonic in $\\sigma$: n=48 children per cell, "
-            "so per-cell noise is large.\nThe finding is the persistent GAP between "
-            "placements, not the shape of either curve.",
+    ax.text(0.5, -0.30, "16 cm arm is non-monotonic in $\\sigma$. Denominators are 24 refluxing children\n"
+            "(left) and 14 with grades I-II (right), not the 48 per cell: per-cell noise is\n"
+            "large. The finding is the persistent GAP between placements, not either curve's shape.",
             transform=ax.transAxes, ha="center", va="top", fontsize=8.2, color=MUT)
 fig.suptitle("Study 5: the published placement systematically loses low-grade reflux",
              fontweight="bold", y=1.02)

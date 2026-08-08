@@ -274,7 +274,11 @@ def main():
     print("[v1] quasi-static validity", flush=True)
     out["v1_quasistatic"] = v1_quasistatic()
     bad = [(f, t) for f, per in out["v1_quasistatic"].items() if isinstance(per, dict)
-           for t, d in per.items() if isinstance(d, dict) and not d.get("quasistatic_ok")]
+           for t, d in per.items() if isinstance(d, dict) and not d.get("eqs_ok")]
+    # DEFECT 39: this read "quasistatic_ok", a key renamed to "eqs_ok" when the
+    # criterion was corrected. .get() returned None for every tissue, so the one
+    # automated gate in the verification script reported EVERY tissue as failing
+    # quasi-static validity -- the exact opposite of what the check computed.
     print(f"[v1] tissues failing the criteria: {bad if bad else 'none'}", flush=True)
 
     mesh = eit3d.make_cylinder(R=5.5, height=20.0, n_rings=6, nz=17)
