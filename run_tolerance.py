@@ -132,7 +132,7 @@ def main():
 
     out = {"config": dict(n_strip=N_STRIP, span=SPAN, z_center=ZC0, snr=SNR,
                           offsets_cm=list(OFFSETS_CM),
-                          n_strip=N_STRIP, height=HEIGHT, grades=list(GRADES),
+                          height=HEIGHT, grades=list(GRADES),
                           motion=list(MOTION), n_trial=N_TRIAL)}
     grid = {}
     for o in skipped:
