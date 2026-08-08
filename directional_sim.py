@@ -629,13 +629,35 @@ def direction_features(dZ, world):
     return out
 
 
-# Calibrated, not guessed. Measured lin distributions at 0.45 cm motion:
-# travelling events median ~0.95 (p10 0.40), empty windows median ~0.12-0.25.
-# Youden-optimal threshold is 0.35, which keeps 96.4% of real events while
-# rejecting 71.4% of empty ones. An earlier hand-picked 0.55 discarded 37.5% of
-# genuine events, because the fused lin is a weighted average across apertures
-# and sits lower than the single-aperture value that number was chosen against.
-LIN_GATE = 0.35
+# Abstain threshold on wave linearity. Set by calibrate_gate.py, which draws 480
+# trials from seed block 4e6 -- one no run_*.py touches -- across motion 0.0, 0.30
+# and 0.60 with grades sampled from GRADE_WEIGHTS. Full sweep in metrics_gate.json.
+#
+# THE OLD VALUE AND ITS JUSTIFICATION WERE BOTH WRONG.
+# The previous comment claimed 0.35 kept 96.4% of real events while rejecting
+# 71.4% of empty ones, a Youden of 0.68. Three defects inflated that:
+#   - lin was an UNADJUSTED R^2, whose null expectation is 1/(nz-1) rather than 0
+#     (defect 39), so empty windows scored far higher than they should;
+#   - lin was averaged with a weight containing lin itself (defect 40), biasing
+#     the statistic upward wherever any aperture happened to fit;
+#   - motion was dominated by the fat layer sliding under the electrodes
+#     (defect 38), which is a large, smooth, strip-wide perturbation and so looks
+#     far more linear than real motion does.
+# On the corrected statistic and the corrected motion model the same calibration
+# gives a Youden of only 0.45. The gate is substantially weaker than this project
+# has been claiming.
+#
+# Measured: travelling median +0.293, empty median -0.105, but travelling p10 is
+# -0.490 against empty p90 of +0.598 -- the distributions overlap heavily, and the
+# Youden curve is flat between 0.33 and 0.45 across the whole usable range. There
+# is no sharp operating point; this is a weak discriminator being asked to carry
+# the abstain decision.
+#
+# 0.16 is the Youden optimum: keeps 81% of correctly-signed events, rejects 64%
+# of empty windows. Youden weights sensitivity and specificity equally, which is
+# probably NOT what a screening device wants -- the sweep is published so the
+# point can be moved toward specificity without re-running anything.
+LIN_GATE = 0.16
 
 
 def decide_direction(feat, lin_gate=LIN_GATE):
