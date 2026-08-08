@@ -269,7 +269,7 @@ def v4_contact_immunity(world, sigma):
 # ---------------------------------------------------------------- main
 def main():
     t0 = time.time()
-    out = {}
+    out = {"config": dict(model_version=ds.MODEL_VERSION)}
 
     print("[v1] quasi-static validity", flush=True)
     out["v1_quasistatic"] = v1_quasistatic()

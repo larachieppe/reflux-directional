@@ -1,4 +1,7 @@
 {
+ "config": {
+  "model_version": 5
+ },
  "v1_quasistatic": {
   "50kHz": {
    "muscle": {
@@ -236,13 +239,13 @@
      0.18756913253696708,
      0.10649412085227646
     ],
-    "slope": 1.443305891029419,
+    "slope": 1.4220989906836599,
     "lin": 0.9732920015893486,
     "decision": 1,
     "strip": 0,
-    "build_solve_s": 0.6,
+    "build_solve_s": 0.8,
     "absZ_rel_to_finest": 0.2340194751419527,
-    "slope_rel_to_finest": 0.010509924834892029
+    "slope_rel_to_finest": 0.007418086962619849
    },
    {
     "n_rings": 5,
@@ -271,13 +274,13 @@
      0.3410192500969598,
      0.11024658978384587
     ],
-    "slope": 1.918629227143921,
+    "slope": 1.4374409509373975,
     "lin": 0.9363100081939519,
     "decision": 1,
     "strip": 0,
-    "build_solve_s": 1.2,
+    "build_solve_s": 1.8,
     "absZ_rel_to_finest": 0.6901684554965388,
-    "slope_rel_to_finest": 0.3433007432155711
+    "slope_rel_to_finest": 0.0032901354312921383
    },
    {
     "n_rings": 6,
@@ -306,13 +309,13 @@
      0.2405258140113369,
      0.09639380506762699
     ],
-    "slope": 1.4111078619629953,
+    "slope": 1.4185294159267166,
     "lin": 0.9902783538812017,
     "decision": 1,
     "strip": 0,
-    "build_solve_s": 2.9,
+    "build_solve_s": 4.3,
     "absZ_rel_to_finest": 0.17350171690675564,
-    "slope_rel_to_finest": 0.012033063546134575
+    "slope_rel_to_finest": 0.009909541751764605
    },
    {
     "n_rings": 7,
@@ -341,13 +344,13 @@
      0.2281813347525757,
      0.09867243700040731
     ],
-    "slope": 1.860803168084706,
+    "slope": 1.455462296141829,
     "lin": 0.9327150966481363,
     "decision": 1,
     "strip": 0,
-    "build_solve_s": 6.3,
+    "build_solve_s": 10.0,
     "absZ_rel_to_finest": 0.13709350155057667,
-    "slope_rel_to_finest": 0.3028146571013183
+    "slope_rel_to_finest": 0.015868487160465624
    },
    {
     "n_rings": 8,
@@ -376,11 +379,11 @@
      0.19371444330630572,
      0.10124070578030997
     ],
-    "slope": 1.4282946219110533,
+    "slope": 1.4327270847923503,
     "lin": 0.994909924036366,
     "decision": 1,
     "strip": 0,
-    "build_solve_s": 16.7,
+    "build_solve_s": 25.6,
     "absZ_rel_to_finest": 0.0,
     "slope_rel_to_finest": 0.0
    }
@@ -390,7 +393,7 @@
    1
   ],
   "absZ_rel_change_finest_two": 0.13709350155057667,
-  "slope_rel_change_finest_two": 0.3028146571013183
+  "slope_rel_change_finest_two": 0.015868487160465624
  },
- "runtime_min": 0.48915605147679647
+ "runtime_min": 0.747969635327657
 }

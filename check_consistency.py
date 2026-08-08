@@ -227,10 +227,11 @@ def check_provenance():
         if any(k in name for k in ("_confounded", "_uniformgrade", "preD31")):
             continue                      # deliberately preserved historical runs
         try:
-            cfg = (json.load(open(f)) or {}).get("config", {}) or {}
+            doc = json.load(open(f)) or {}
+            cfg = doc.get("config", {}) or {}
         except Exception:
             continue
-        v = cfg.get("model_version")
+        v = cfg.get("model_version", doc.get("model_version"))
         if v is None:
             unstamped.append(name)
         elif v != cur:
