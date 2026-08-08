@@ -57,6 +57,26 @@ CLASSES = ["noflow", "antegrade", "bladder", "reflux"]
 LEGACY_FAT = False     # defect 38: fat boundary follows the shift
 LEGACY_LIN = False     # defects 39+40: unadjusted R^2, self-weighted fusion
 
+# How the two solved frequencies are combined into the per-zone series the
+# estimator reads. "mean" is what every study so far has used, which averages
+# them and therefore extracts NO discriminative frequency information -- the
+# second frequency doubles the solve cost and buys only noise averaging.
+#   f0    50 kHz alone          f1    100 kHz alone
+#   mean  average of the two    diff  the dispersion contrast, f1 - f0
+# The contrast is the physically interesting one: urine has no cell membranes
+# (eps_r 80) while soft tissue is dominated by them (eps_r 26,000), so urine and
+# tissue disperse very differently between 50 and 100 kHz. A difference should
+# therefore suppress tissue and preferentially retain urine.
+FREQ_MODE = "mean"
+
+# Body-habitus variation. OFF by default, which is what every study so far has
+# used: draw_anatomy varied only organ POSITIONS, so torso build, fat thickness,
+# organ sizes and urine conductivity were IDENTICAL for every "simulated child".
+# That is why the word "cohort" overstates what those studies sampled. With this
+# on, the properties that actually differ between children -- and that a surface
+# measurement is most sensitive to -- are drawn per child.
+HABITUS = False
+
 
 def admittivity(name, f):
     s0, er0 = TISSUE[name]
@@ -177,7 +197,7 @@ class StripWorld:
         r = (np.hypot(x, y) if LEGACY_FAT
              else np.hypot(self.cent[:, 0], self.cent[:, 1]))
         sig = np.full(self.cent.shape[0], admittivity("muscle", f), complex)
-        sig[r > 0.82 * self.R] = admittivity("fat", f)
+        sig[r > anat.get("fat_frac", 0.82) * self.R] = admittivity("fat", f)
         for sgn in (+1, -1):
             kx = sgn * anat["ur_x"] + anat["k_off"][0]
             ky = anat["k_off"][1]
@@ -197,7 +217,10 @@ class StripWorld:
         wall = 0.82                                       # lumen fraction
         ld = ((x - bx) / (br[0]*wall))**2 + ((y - by) / (br[1]*wall))**2 \
              + ((z - bz) / (br[2]*wall))**2
-        sig[ld < 1] = admittivity("urine", f)             # lumen
+        _us = anat.get("urine_sigma")
+        _urine = (admittivity("urine", f) if _us is None else
+                  complex(_us, admittivity("urine", f).imag))
+        sig[ld < 1] = _urine                              # lumen
         return sig
 
     def add_bolus(self, sig, f, center, radii, shift=(0.0, 0.0, 0.0), frac=1.0,
@@ -216,14 +239,21 @@ class StripWorld:
 
 def draw_anatomy(world, rng):
     R, H = world.R, world.H
+    # Fat thickness is the single most consequential habitus variable for a
+    # SURFACE measurement: it sits directly in series under every electrode. A
+    # fixed 0.82 R boundary gives every child the same 0.99 cm shell.
+    fat_frac = float(rng.uniform(0.72, 0.90)) if HABITUS else 0.82
+    oscale = float(rng.uniform(0.80, 1.25)) if HABITUS else 1.0
+    urine_s = float(rng.uniform(1.20, 2.20)) if HABITUS else None
     return {
+        "fat_frac": fat_frac, "oscale": oscale, "urine_sigma": urine_s,
         "ur_x":      world.ur_x * rng.uniform(0.92, 1.08),
         "k_off":     (rng.normal(0, 0.04 * R), rng.normal(0, 0.04 * R)),
         "z_kidney":  world.z_kidney + rng.normal(0, 0.03 * H),
-        "k_r":       (0.20 * R, 0.26 * R, 0.11 * H),
+        "k_r":       (0.20 * R * oscale, 0.26 * R * oscale, 0.11 * H * oscale),
         "bladder":   (rng.normal(0, 0.05 * R), rng.normal(0, 0.05 * R),
                       world.z_bladder + rng.normal(0, 0.03 * H)),
-        "b_r":       [0.30 * R, 0.30 * R, 0.12 * H],
+        "b_r":       [0.30 * R * oscale, 0.30 * R * oscale, 0.12 * H * oscale],
     }
 
 
@@ -337,6 +367,7 @@ def bolus_path(world, anat, label, grade, side, T):
 
 
 def simulate_trial(world, label, rng, grade=3, side=+1, T=16, freqs=None,
+                   grade2=None,
                    snr_db=60.0, motion_amp=0.0, amp=1.0, anat=None,
                    motion_grad=0.0, breath_hz=0.30):
     """Return Z tensor (T, F, n_zones) complex, baseline-subtracted + noisy.
@@ -354,9 +385,19 @@ def simulate_trial(world, label, rng, grade=3, side=+1, T=16, freqs=None,
         anat = draw_anatomy(world, rng)
     disp = draw_motion(world, rng, T, motion_amp)
     zc_t = draw_contact_z(world, rng, T, motion_amp)
-    cs, frac = bolus_path(world, anat, label, grade, side, T)
-    br = GRADE_TABLE[grade][0] * world.R
-    radii = (br, br, 1.15 * br)
+    # BILATERAL. side=0 seeds a bolus on BOTH flanks, which is how roughly a
+    # third of clinical reflux presents and which the model could not represent
+    # at all: `side` was strictly +1 or -1, so every simulated child refluxed on
+    # exactly one side. Grades may differ between sides, as they do clinically,
+    # via `grade2`.
+    sides = (+1, -1) if side == 0 else (side,)
+    grades = (grade, grade if grade2 is None else grade2)
+    paths = []
+    for si, sd in enumerate(sides):
+        g_i = grades[si] if side == 0 else grade
+        c_i, f_i = bolus_path(world, anat, label, g_i, sd, T)
+        b_i = GRADE_TABLE[g_i][0] * world.R
+        paths.append((c_i, f_i, (b_i, b_i, 1.15 * b_i)))
 
     Z = np.zeros((T, len(freqs), len(world.zones)), complex)
     for ti in range(T):
@@ -367,9 +408,13 @@ def simulate_trial(world, label, rng, grade=3, side=+1, T=16, freqs=None,
                              anat["b_r"][2] * g]
         for fi, f in enumerate(freqs):
             sig = world.base_sigma(f, anat_t, shift=disp[ti], grad=motion_grad)
-            if label in ("reflux", "antegrade") and frac[ti] > 1e-3:
-                sig = world.add_bolus(sig, f, cs[ti], radii, shift=disp[ti],
-                                      frac=float(frac[ti]), grad=motion_grad)
+            if label in ("reflux", "antegrade"):
+                for c_i, f_i, r_i in paths:
+                    if f_i[ti] > 1e-3:
+                        sig = world.add_bolus(sig, f, c_i[ti], r_i,
+                                              shift=disp[ti],
+                                              frac=float(f_i[ti]),
+                                              grad=motion_grad)
             Z[ti, fi] = strip3d.measure_zones(world.solver, sig, zc_t[ti],
                                               world.zones, amp)
     # Baseline: a RESTING reference from before the bolus enters the sensed span
@@ -475,7 +520,27 @@ def zone_series(dZ, world, strip, m=None):
     idx = np.where(sel)[0]
     if len(idx) == 0:
         return np.zeros((0, dZ.shape[0])), idx
-    ser = dZ.real.mean(axis=1)                       # (T, n_zones), linear
+    if dZ.shape[1] < 2 or FREQ_MODE == "mean":
+        ser = dZ.real.mean(axis=1)                   # (T, n_zones), linear
+    elif FREQ_MODE == "f0":
+        ser = dZ.real[:, 0, :]
+    elif FREQ_MODE == "f1":
+        ser = dZ.real[:, 1, :]
+    elif FREQ_MODE == "diff":
+        ser = dZ.real[:, 1, :] - dZ.real[:, 0, :]    # dispersion contrast
+    elif FREQ_MODE == "phase":
+        # The conductivity dispersion in this model is a single universal slope,
+        # so every tissue changes by the same +1.204% and a REAL-part contrast
+        # carries no tissue information at all. The phase does: eps_r spans 80
+        # for urine to 30000 for kidney, so the phase change 50 -> 100 kHz runs
+        # +0.006 deg for urine against +17.25 deg for kidney. The estimator
+        # discards exactly that by reading dZ.real, so this arm reads the
+        # inter-frequency phase difference instead.
+        ser = np.angle(dZ[:, 1, :]) - np.angle(dZ[:, 0, :])
+    elif FREQ_MODE == "imag":
+        ser = dZ.imag.mean(axis=1)
+    else:
+        raise ValueError(f"unknown FREQ_MODE {FREQ_MODE!r}")
     return ser[:, idx].T, idx
 
 
@@ -699,6 +764,56 @@ def decide_direction(feat, lin_gate=None):
         return 0, s, 0.0                       # no coherent travelling wave
     ev = f["lag"] + (f["slope"] if f["n_zones"] >= 3 else 0.0)
     return (1 if ev > 0 else -1), s, float(ev)
+
+
+def decide_laterality(feat, lin_gate=None, min_dif_energy=None):
+    """Per-strip decision: 'none' | 'left' | 'right' | 'bilateral'.
+
+    decide_direction answers "which way did the bolus go" by picking the SINGLE
+    strip carrying more differential energy. That is the right question for
+    direction, but it makes bilateral reflux structurally unreportable: the
+    winner-takes-all step can only ever name one side, so "both kidneys" is not
+    in the output alphabet at all. Laterality -- left, right or bilateral -- is a
+    stated clinical requirement, so it needs its own decision rule.
+
+    Each strip is judged INDEPENDENTLY on the same two tests decide_direction
+    applies to the winner: the wave must be coherent enough to pass the abstain
+    gate, and its arrival-time evidence must point retrograde. A strip must also
+    clear an absolute differential-energy floor, because the relative comparison
+    that decide_direction relies on is unavailable when both sides may be active.
+
+    Returns (label, per_strip) where per_strip[k] is (fired, evidence).
+    """
+    if lin_gate is None:
+        lin_gate = LIN_GATE
+    fired, evs = {}, {}
+    energies = [feat[k].get("dif_energy", 0.0) if feat[k]["defined"] else 0.0
+                for k in (0, 1)]
+    if min_dif_energy is None:
+        # Absolute floor, set relative to the quieter strip so it adapts to the
+        # trial's overall signal level rather than to a hard-coded impedance.
+        min_dif_energy = 0.0
+    for k in (0, 1):
+        f = feat[k]
+        ok = bool(f["defined"])
+        if ok and f.get("n_zones", 0) >= 3 and f.get("lin", 0.0) < lin_gate:
+            ok = False                          # no coherent travelling wave
+        if ok and f.get("dif_energy", 0.0) < min_dif_energy:
+            ok = False                          # below the activity floor
+        ev = (f["lag"] + (f["slope"] if f.get("n_zones", 0) >= 3 else 0.0)
+              if f["defined"] else 0.0)
+        fired[k] = bool(ok and ev > 0)          # retrograde on THIS strip
+        evs[k] = float(ev)
+    # strip 0 is phi=0 (x>0, the side seeded by side=+1); strip 1 is phi=pi
+    if fired[0] and fired[1]:
+        lab = "bilateral"
+    elif fired[0]:
+        lab = "right"
+    elif fired[1]:
+        lab = "left"
+    else:
+        lab = "none"
+    return lab, {k: (fired[k], evs[k]) for k in (0, 1)}
 
 
 def feature_vector(dZ, world):

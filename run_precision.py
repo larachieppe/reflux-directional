@@ -24,6 +24,18 @@ import eit3d
 import directional_sim as ds
 import analyze_subjects as asub
 
+# Body-habitus variation, off by default so the published arm is unchanged.
+# HABITUS=1 draws fat thickness, organ scale and urine conductivity per child,
+# which is the difference between a "cohort" and 48 copies of one child.
+HABITUS = os.environ.get("HABITUS", "0") == "1"
+OUT = os.environ.get("PRECISION_OUT", "metrics_precision.json")
+# Derive the checkpoint from OUT. A shared checkpoint would let the habitus arm
+# resume from the non-habitus arm's completed trials -- silently mixing two
+# different cohorts into one result, the same collision that let an alternative
+# placement overwrite the published run's records.
+CKPT_ENV = os.environ.get("PRECISION_CKPT",
+                          OUT.replace(".json", ".partial.jsonl"))
+
 N_STRIP = 8
 SNR = 60
 T = 20
@@ -74,11 +86,12 @@ _W = {}
 # trial 1000. Jobs are emitted child-major and chunked one child at a time, so
 # a single slot already gives full locality.
 _WORLD_CACHE_MAX = 1
-CKPT = "metrics_precision.partial.jsonl"
+CKPT = CKPT_ENV
 
 
 def _init():
     global _MESH
+    ds.HABITUS = HABITUS
     _MESH = eit3d.make_cylinder(R=5.5, height=HEIGHT, n_rings=6, nz=17)
 
 
@@ -190,6 +203,7 @@ def main():
                       f"eta {(el/(i+1)*(len(jobs)-i-1))/60:.1f} min", flush=True)
 
     out = {"config": dict(n_strip=N_STRIP, snr=SNR, motion=MOTION, T=T,
+                          habitus=HABITUS,
                           k_events=K_EVENTS, n_child=N_CHILD,
                           sigmas=list(SIGMAS), configs=CONFIGS)}
     grid = {}
@@ -245,10 +259,10 @@ def main():
     out["grade_hist"] = {str(g): sum(1 for r in recs if r["grade"] == g)
                          for g in (1, 2, 3, 4, 5)}
     out["runtime_min"] = (time.time() - t0) / 60.0
-    with open("metrics_precision.json", "w") as f:
+    with open(OUT, "w") as f:
         json.dump(out, f, indent=1)
     # per-trial records, so the abstain gate can be swept post hoc
-    with open("records_precision.json", "w") as f:
+    with open(OUT.replace("metrics_", "records_"), "w") as f:
         json.dump(recs, f)
     if os.path.exists(CKPT):
         os.remove(CKPT)          # only on a complete, written run
