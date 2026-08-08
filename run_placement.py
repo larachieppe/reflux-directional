@@ -43,6 +43,22 @@ CONFIGS = [(16.0, 0.40), (16.0, 0.50), (16.0, 0.60),
            (10.0, 0.28), (10.0, 0.34), (10.0, 0.42)]
 OFFSETS_CM = (-2.0, -1.0, 0.0, 1.0, 2.0)   # misplacement arm, applied to best
 
+def _feasible(span, zc, n_per_strip, height):
+    """Whether a span-S strip centred at zc actually fits on the body.
+
+    place_strips raises for an off-body request rather than snapping electrodes
+    onto the end cap, so infeasible grid points must be excluded here and
+    recorded, not silently attempted. Three of the ten points in this grid are
+    infeasible on a 20 cm torso -- 16 cm at z=0.40 and z=0.60, and 12 cm at
+    z=0.30 -- and any earlier numbers for them were measured with at least one
+    electrode off the flank.
+    """
+    dz = span / max(n_per_strip - 1, 1)
+    half = 0.40 * dz
+    z0 = zc * height - span / 2.0
+    return (z0 - half >= -1e-9) and (z0 + span + half <= height + 1e-9)
+
+
 _W = {}
 _WORLD_CACHE_MAX = 2
 
@@ -121,13 +137,20 @@ def summarize(rs):
 
 def main():
     t0 = time.time()
+    feasible = [(sp, zc) for (sp, zc) in CONFIGS
+                if _feasible(sp, zc, N_STRIP, HEIGHT)]
+    skipped = [c for c in CONFIGS if c not in feasible]
+    if skipped:
+        print(f"[place] {len(skipped)} configs leave the body and are NOT "
+              f"testable: {skipped}", flush=True)
     jobs = []
-    for span, zc in CONFIGS:
+    for span, zc in feasible:
         for g in GRADES:
             for m in MOTION:
                 for i in range(N_TRIAL):
                     jobs.append((span, zc, m, g, i, "place"))
-    print(f"[place] {len(jobs)} trials, {len(CONFIGS)} configs", flush=True)
+    print(f"[place] {len(jobs)} trials, {len(feasible)} feasible configs",
+          flush=True)
 
     nproc = max(1, min(4, (os.cpu_count() or 4) - 2))
     recs = []
@@ -143,7 +166,11 @@ def main():
                           configs=CONFIGS, grades=list(GRADES),
                           motion=list(MOTION), n_trial=N_TRIAL)}
     grid = {}
-    for span, zc in CONFIGS:
+    for span, zc in skipped:
+        grid[f"{span:.0f}_{zc:.2f}"] = dict(
+            span=span, z_center=zc, untestable=True,
+            reason="strip leaves the body at this span and centre")
+    for span, zc in feasible:
         key = f"{span:.0f}_{zc:.2f}"
         grid[key] = {"span": span, "z_center": zc,
                      "strip_z": [zc * HEIGHT - span / 2, zc * HEIGHT + span / 2]}
@@ -184,7 +211,9 @@ def main():
                     v.append(x)
         return sum(v) / len(v) if v else -1.0
 
-    best_key = max(grid, key=low_score)
+    out["untestable_configs"] = [list(c) for c in skipped]
+    out["feasible_configs"] = [list(c) for c in feasible]
+    best_key = max([f"{sp:.0f}_{zc:.2f}" for sp, zc in feasible], key=low_score)
     out["best_low_grade"] = {"key": best_key, "score": low_score(best_key),
                              "span": grid[best_key]["span"],
                              "z_center": grid[best_key]["z_center"]}

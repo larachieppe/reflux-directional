@@ -56,10 +56,15 @@ CONFIGS = [_best_placement(),
 # arms to this makes the placement-error distribution identical across arms;
 # previously each arm was limited only by its own span, which protected the long
 # strip from exactly the large misplacements the study was meant to compare.
-MAX_OFF = min(
-    min(zc0 - (span / (2 * HEIGHT) + 0.005),
-        (1.0 - span / (2 * HEIGHT) - 0.005) - zc0) * HEIGHT
-    for span, zc0, _ in CONFIGS)
+def _centre_margin(span, zc0):
+    """How far this centre can move before the strip runs off the body, in cm.
+    Includes the electrode acceptance half-window, which the span alone omits."""
+    half = 0.40 * span / max(N_STRIP - 1, 1)
+    lo = (span / 2.0 + half) / HEIGHT
+    return min(zc0 - lo, (1.0 - lo) - zc0) * HEIGHT
+
+
+MAX_OFF = min(_centre_margin(span, zc0) for span, zc0, _ in CONFIGS)
 
 _W = {}
 # ONE world per worker. With sigma > 0 every child has its own z_center, so a
@@ -105,7 +110,12 @@ def _run_one(args):
     off = float(np.random.default_rng(880_000 + child).normal(0.0, sigma)) if sigma > 0 else 0.0
     off = float(np.clip(off, -MAX_OFF, MAX_OFF))
     zc = zc0 + off / HEIGHT
-    zc = float(np.clip(zc, span / (2 * HEIGHT) + 0.005, 1.0 - span / (2 * HEIGHT) - 0.005))
+    # The legal centre range must include the electrode acceptance half-window,
+    # not just the span: place_strips raises if the outermost electrode's window
+    # runs off the body, and the old clip ignored that margin.
+    _half = 0.40 * span / max(N_STRIP - 1, 1)
+    _lo = (span / 2.0 + _half) / HEIGHT
+    zc = float(np.clip(zc, _lo + 1e-4, 1.0 - _lo - 1e-4))
     # the REALIZED offset after every clip, which is what was actually applied.
     # mean_abs_off previously reported the pre-clip nominal draw and so was wrong
     # in most cells, and it was the only placement diagnostic saved.
@@ -124,7 +134,8 @@ def _run_one(args):
     # single hand-set constant that dominates the error budget. Saving it makes
     # the operating point a post-hoc sweep instead of another hour of compute.
     return dict(span=span, zc0=zc0, sigma=sigma, child=child, k=k, grade=grade,
-                label=label, off=off_realized, off_nominal=off, dir=int(d),
+                label=label, off=off_realized, off_nominal=off,
+                clipped=bool(abs(off_realized - off) > 1e-9), dir=int(d),
                 want=(+1 if refluxer else -1),
                 lin=float(feat[s].get("lin", 0.0)), ev=float(ev),
                 lat_ok=bool((s == 0) == (side > 0)))
@@ -198,7 +209,7 @@ def main():
                 n_retro = sum(1 for e in evs if e["dir"] > 0)
                 n_abstain = sum(1 for e in evs if e["dir"] == 0)
                 ps.append(dict(label=evs[0]["label"], n_hit=hits, n_retro=n_retro,
-                               n_abstain=n_abstain,
+                               n_abstain=n_abstain, clipped=evs[0]["clipped"],
                                grade=evs[0]["grade"], off=evs[0]["off"]))
             sa = asub.subject_analysis(ps, K_EVENTS)
             refl = [p for p in ps if p["label"] == "reflux"]
@@ -222,6 +233,13 @@ def main():
                 low_grade_never=(float(np.mean([p["n_hit"] == 0 for p in lowg]))
                                  if lowg else float("nan")),
                 mean_abs_off=float(np.mean([abs(p["off"]) for p in ps])),
+                # A 12 cm strip at z=0.36 can only move +/-0.51 cm on a 20 cm
+                # torso before an electrode leaves the flank, so the larger sigma
+                # arms are heavily clipped and are NOT sampling the distribution
+                # they are labelled with. Report how much, rather than let the
+                # label imply an error spread the geometry cannot deliver.
+                max_off_cm=float(MAX_OFF),
+                clipped_fraction=float(np.mean([p["clipped"] for p in ps])),
             )
     out["grid"] = grid
     out["grade_hist"] = {str(g): sum(1 for r in recs if r["grade"] == g)
