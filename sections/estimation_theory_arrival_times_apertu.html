@@ -71,8 +71,7 @@ claim is supported.</p>
 <code>max(3, (2*n)//3)</code>, so <em>T</em> = 20 gives a ±13-sample window. At N = 8 over
 a 16 cm span the pitch is 2.286 cm and the widest usable aperture (G = 3) spans
 9.14 cm of zone centroids — an end-to-end delay of 9.14/0.644 = 14.2 frames,
-<em>outside</em> the window, and at L = 13 the taper has already removed 65% of the correlation.
-The aperture with the best lever arm is the one whose delay is most clipped. The sign survives
+<em>outside</em> the window, and at L = 13 the taper has already removed 65% of the correlation. The aperture with the best lever arm is the one whose delay is most clipped. The sign survives
 (the argmax saturates at the boundary with correct polarity) but the lever-arm benefit saturates
 rather than scaling.</p>
 
@@ -128,8 +127,7 @@ the extreme of the regressor where leverage is highest:</p>
 <p>A single dead endpoint zone owns 83% of the slope in a three-zone aperture and 60% in a
 five-zone one. That is a mechanical explanation for the Study 5 <em>low-grade-never-detected</em>
 gap (43/57/21/21% for the 16 cm arm versus 0/0/7/14% for the 10 cm arm) that never
-invokes depth sensitivity: the long strip puts more signal-free zones at high leverage.
-Inverse-variance weights 1/var(τ̂<sub>j</sub>), estimable from each zone's own
+invokes depth sensitivity: the long strip puts more signal-free zones at high leverage. Inverse-variance weights 1/var(τ̂<sub>j</sub>), estimable from each zone's own
 correlation peak <code>peaks[j]</code> — already computed, then merely averaged —
 would down-weight exactly those zones. <strong>WLS is not implemented and has not been
 tried.</strong> OLS does stay unbiased in <em>sign</em> under symmetric noise, which is why the
@@ -174,7 +172,7 @@ identical data showed the greedy pick losing at every <em>N</em> ≥ 8 (N = 8: 0
 1.00 best fixed; N = 12: 0.81 vs 1.00). Electrode count was never the problem; the selection rule
 was.</p>
 
-<p>(5) also exposes an untested interaction between design studies. Study 5 overturns the locked
+<p>(5) also exposes an untested interaction between design studies. Study 5 selects against the
 16 cm @ z = 0.50 placement in favour of 10 cm @ z = 0.34. But at <em>N</em> = 8 that
 cuts the pitch from 2.286 to 1.429 cm and the G = 3 lever arm from 9.14 to 5.71 cm
 — a 1.6× inflation of se(slope) by (4). <strong>Placement robustness and timing
@@ -185,7 +183,7 @@ precision were optimised separately and never scored jointly.</strong></p>
 <p>The implemented weight is, verbatim,
 <code>w = base * (0.25 + q) * np.sqrt(max(c["dif_energy"], 0.0))</code>, with
 <code>base = z_baseline</code> and <code>q = max(lin, 0)</code> for <em>n</em> ≥ 3, else the
-literal <code>0.35</code>.   (6)</p>
+literal <code>0.35</code>. (6)</p>
 
 <p>Inverse-variance weighting of slope estimates, from (4), would instead use</p>
 

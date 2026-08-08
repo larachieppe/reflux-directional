@@ -56,8 +56,7 @@ height 20 cm, 6 rings, 17 layers. No spine, no psoas, no iliac crest, no ribs, n
 lordosis. The flank strips sit on a surface of constant curvature; a real flank is not
 one.</li>
 <li><strong>No bowel gas.</strong> <code>TISSUE</code> contains muscle, fat, kidney,
-bladder wall and urine. There is no air entry and <code>base_sigma</code> assigns none.
-Gas is a near-zero-conductivity inclusion that <em>moves on its own schedule</em> in the
+bladder wall and urine. There is no air entry and <code>base_sigma</code> assigns none. Gas is a near-zero-conductivity inclusion that <em>moves on its own schedule</em> in the
 anterior and medial abdomen. It is the most obvious source of a spurious travelling
 perturbation with no relation to the ureter, and it is entirely absent. Study 6 tested
 body motion, which is a different confounder: motion displaces the whole conductivity
@@ -88,8 +87,7 @@ experiment, not a measurement. A one-line sweep of <code>TISSUE["urine"]</code> 
 
 <h4>3. What the word "cohort" can and cannot mean here</h4>
 
-<p>This is the item most likely to be over-read by a reader skimming for results.
-<code>draw_anatomy(world, rng)</code> returns exactly six quantities, and inspection of
+<p>This is the item most likely to be over-read by a reader skimming for results. <code>draw_anatomy(world, rng)</code> returns exactly six quantities, and inspection of
 them is decisive:</p>
 
 <table class="mm-t">
@@ -102,8 +100,7 @@ them is decisive:</p>
 </table>
 
 <p>Every organ <em>size</em> is a fixed multiple of <code>R</code> and <code>H</code>,
-and <code>R</code> = 5.5 cm and <code>H</code> = 20 cm are constants of the run.
-<code>xscale</code>, the one knob that could make the torso elliptical, defaults to 1.0
+and <code>R</code> = 5.5 cm and <code>H</code> = 20 cm are constants of the run. <code>xscale</code>, the one knob that could make the torso elliptical, defaults to 1.0
 and is never set otherwise. So: torso radius, torso height, torso cross-section, fat
 thickness, kidney size, bladder size and every tissue conductivity including urine are
 <strong>identical across all 48 "simulated children."</strong></p>
@@ -141,8 +138,7 @@ number.</li>
 24 healthy children that chose it. With six candidates and n = 24 per arm, the winner's
 J is upward-biased by selection. Evidence that this is not hypothetical: the chosen k
 moves across cells &mdash; 3, 3, 4, 4 for the 10 cm arm at &sigma; = 0/0.5/1/2 cm, and 1,
-1, 1, 1 for the 16 cm arm &mdash; which is a threshold tracking noise as much as signal.
-The fix is standard: pre-register a rule (a simple majority, k &ge; 4) or select k on a
+1, 1, 1 for the 16 cm arm &mdash; which is a threshold tracking noise as much as signal. The fix is standard: pre-register a rule (a simple majority, k &ge; 4) or select k on a
 disjoint set of children and report on the rest.</li>
 </ul>
 
@@ -175,13 +171,11 @@ by 22 percentage points. Less obviously, specificity is affected too:
 <code>bolus_path</code> uses <code>GRADE_TABLE[grade]</code> to size the bolus for
 <em>antegrade</em> trials as well as refluxing ones, so healthy children also get an
 unrealistically large mean bolus, giving cleaner true-negative calls &mdash; so
-<code>best_spec</code> (0.833 / 0.750 / 0.792 / 0.750) is optimistic as well.
-<code>low_grade_never</code> is the exception: it conditions on grade &le; 2 and is
+<code>best_spec</code> (0.833 / 0.750 / 0.792 / 0.750) is optimistic as well. <code>low_grade_never</code> is the exception: it conditions on grade &le; 2 and is
 therefore unbiased by the mix, which is fortunate, since it is the metric the placement
 conclusion rests on.</p>
 
-<div class="mm-warn">The re-weighted sensitivity cannot be recovered post hoc.
-<code>metrics_precision.json</code> stores only the aggregated grid, and the per-record
+<div class="mm-warn">The re-weighted sensitivity cannot be recovered post hoc. <code>metrics_precision.json</code> stores only the aggregated grid, and the per-record
 checkpoint <code>metrics_precision.partial.jsonl</code> was not retained, so the per-grade
 breakdown no longer exists on disk. Correcting this needs a rerun with
 <code>sample_grade</code> actually called (or per-record grades persisted and the average
@@ -272,8 +266,7 @@ program.</p>
 
 <p><strong>The sentence to take away:</strong> this work establishes that a directional
 estimator is internally consistent, mesh-independent in its decision, robust to non-rigid
-motion in a fail-safe way, and sensitive to strip placement in a way that overturns the
-project's own locked design &mdash; and it establishes none of that about a child, because
+motion in a fail-safe way, and sensitive to strip placement in a way that drives the choice of geometry &mdash; and it establishes none of that about a child, because
 the "cohort" is one body with jittered organs, the grade mix is 22 points easier than
 declared, and at realistic screening prevalence the measured operating point yields a
 3.3% positive predictive value.</p>

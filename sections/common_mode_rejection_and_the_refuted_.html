@@ -45,8 +45,7 @@ nothing more. This is the formal content of the audited no-op result: adding an 
 per-zone complex constant to <code>dZ</code> moves the decision evidence by
 <b>8.9×10<sup>−16</sup></b>, i.e. by the floating-point residue of (3). It is
 also why the resting-reference subtraction cannot change the direction call —
-<code>base = Z[:2].mean(axis=0)</code> contributes a per-zone constant, which (3) removes.
-The reference is not useless: the gain <code>1/|Zref|</code> and the <code>energy</code> and
+<code>base = Z[:2].mean(axis=0)</code> contributes a per-zone constant, which (3) removes. The reference is not useless: the gain <code>1/|Zref|</code> and the <code>energy</code> and
 <code>dif_energy</code> features, which drive strip selection and the aperture fusion weights,
 all survive it.</p>
 
@@ -97,8 +96,7 @@ empty ones, using a lag statistic with no common-mode rejection.</li>
 </ul>
 
 <p>At <i>N</i> = 4 the single zone leaves <code>nz < 2</code>, <code>defined = False</code>,
-and the device abstains always — structurally undecidable, and honest about it.
-<i>N</i> = 5 is the dangerous case: confident, ungated, unprotected. The Study 6
+and the device abstains always — structurally undecidable, and honest about it. <i>N</i> = 5 is the dangerous case: confident, ungated, unprotected. The Study 6
 configuration uses <code>n_strip = 8</code>, giving zone counts 5 / 3 / 1
 at <i>G</i> = 3 / 5 / 7 — two usable apertures, the deepest discarded
 for having one zone.</p>
@@ -197,8 +195,7 @@ matrix gives lag 0 for like-signed <code>f</code>, so <code>tarr</code> is const
 <code>ss_tot ≈ 0</code>, <code>lin</code> collapses to 0.0 by the explicit
 <code>ss_tot > 1e-12</code> branch, and the trial <b>abstains</b>. Where
 <code>f</code> changes sign across the strip the rows anticorrelate, lags saturate at the
-window edge, <code>tarr</code> scatters, <code>lin</code> falls again, and the trial abstains.
-Both branches route to abstention, not to a false direction — which is exactly the
+window edge, <code>tarr</code> scatters, <code>lin</code> falls again, and the trial abstains. Both branches route to abstention, not to a false direction — which is exactly the
 measured failure signature.</li>
 <li><b>Equation (9) is sign-preserving.</b> Even in the quasi-static limit where the gradient
 does reach the slope, it rescales rather than reverses it, by 15% at the extreme.</li>

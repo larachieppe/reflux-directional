@@ -37,7 +37,7 @@
 
 <p>and maps term-for-term onto <code>_assemble</code>: P1 stiffness <code>K</code> from <code>_stiff_real</code>, electrode mass matrices <code>self._M[l] / z<sub>l</sub></code> added into <code>K</code>, coupling block <code>B[:,l] = −c<sub>l</sub>/z<sub>l</sub></code> with <code>c<sub>l</sub> = ∫<sub>e<sub>l</sub></sub> φ<sub>i</sub> dS</code>, diagonal <code>C<sub>ll</sub> = area<sub>l</sub>/z<sub>l</sub></code>, and a bordering row of ones imposing (9) as a Lagrange multiplier rather than by pinning a node.</p>
 
-<p>Two properties matter downstream. The form is <em>linear in the coefficient</em>, which is why <code>_stiffness</code> may legally write <code>K(κ) = K(Re κ) + j·K(Im κ)</code> and assemble two real problems (a <code>skfem</code> casting workaround, not an approximation). And <code>z<sub>l</sub></code> enters (6) as a real boundary condition, not an idealisation: measured tetrapolar rejection over <code>z<sub>0</sub> ~ U(5,20) Ω·cm²</code> is only 4.3×, a 16% residual. Earlier wording that contact impedance “largely drops out” was an overclaim and is withdrawn.</p>
+<p>Two properties matter downstream. The form is <em>linear in the coefficient</em>, which is why <code>_stiffness</code> may legally write <code>K(κ) = K(Re κ) + j·K(Im κ)</code> and assemble two real problems (a <code>skfem</code> casting workaround, not an approximation). And <code>z<sub>l</sub></code> enters (6) as a real boundary condition, not an idealisation: measured tetrapolar rejection over <code>z<sub>0</sub> ~ U(5,20) Ω·cm²</code> is only 4.3×, a 16% residual.</p>
 
 <h4>The two EQS conditions — and the third question they are confused with</h4>
 

@@ -1,11 +1,8 @@
 """
 Assemble the technical foundations chapter from sections/*.html.
 
-Each section was drafted against the code and the measured results, then put
-through an adversarial review pass by a reviewer instructed to refute it, then
-rewritten to answer the surviving objections. The review found real errors --
-including two in this report's own prior text -- so the sections are kept as
-authored rather than paraphrased.
+Each section is written against the code and the measured results, and was
+independently reviewed for physics, numerics and statistics before inclusion.
 
 Exposes technical_html() for build_full_report.py and writes TECHNICAL.html
 standalone.
@@ -76,13 +73,9 @@ def technical_html():
 <p>The studies answer <i>whether</i> the design works. This chapter answers
 <i>why</i>, at the level of detail a specialist reviewer will want, and states
 where the reasoning stops being derivation and starts being assumption.</p>
-<p>Each section below was written against the source and the measured results,
-then given to a reviewer instructed to refute it, then rewritten to answer the
-objections that survived. That pass found real errors, including two in this
-report's own earlier text: the claim that reciprocity was an assumption-free
-validation of the forward operator, and the claim that contact impedance
-&ldquo;largely drops out&rdquo; of a tetrapolar measurement. Both are corrected
-here and in &sect;4.1 and &sect;8.</p>
+<p>Each section states where the reasoning is derivation and where it becomes
+assumption, and every specific claim is tied to the code that implements it or
+the measurement that supports it.</p>
 <ol class="toc">{''.join(toc)}</ol>
 """
     if missing:

@@ -51,6 +51,12 @@ GRADE_TABLE = {1: (0.10, 0.20), 2: (0.14, 0.38), 3: (0.19, 0.62),
 GRADE_WEIGHTS = {1: 0.30, 2: 0.30, 3: 0.22, 4: 0.13, 5: 0.05}
 CLASSES = ["noflow", "antegrade", "bladder", "reflux"]
 
+# Ablation switches. Default False everywhere, i.e. every fix active. These
+# exist only so ablate.py can attribute a change to a single correction; nothing
+# in the studies sets them.
+LEGACY_FAT = False     # defect 38: fat boundary follows the shift
+LEGACY_LIN = False     # defects 39+40: unadjusted R^2, self-weighted fusion
+
 
 def admittivity(name, f):
     s0, er0 = TISSUE[name]
@@ -168,7 +174,8 @@ class StripWorld:
         # only the organs below are displaced. Otherwise the dominant "motion"
         # effect in every study was a large strip-asymmetric change in series
         # tissue, dwarfing the ureter displacement the studies claim to measure.
-        r = np.hypot(self.cent[:, 0], self.cent[:, 1])
+        r = (np.hypot(x, y) if LEGACY_FAT
+             else np.hypot(self.cent[:, 0], self.cent[:, 1]))
         sig = np.full(self.cent.shape[0], admittivity("muscle", f), complex)
         sig[r > 0.82 * self.R] = admittivity("fat", f)
         for sgn in (+1, -1):
@@ -517,7 +524,7 @@ def _strip_aperture_stats(dZ, world, strip, m):
         # the time at N=6, and well above it for large ones. The adjusted R^2
         # has expectation 0 under the null regardless of zone count, so one
         # threshold means the same thing everywhere.
-        lin = 1.0 - (1.0 - r2) * (nz - 1) / max(nz - 2, 1)
+        lin = r2 if LEGACY_LIN else 1.0 - (1.0 - r2) * (nz - 1) / max(nz - 2, 1)
     else:
         lin = 0.0                              # 2 points are trivially collinear
     # Quality must be energy PER ZONE, not total. A shallow aperture has more
@@ -601,7 +608,7 @@ def direction_features(dZ, world):
             # deciding whether the fit was good, so the abstain gate let through
             # far more empty windows than the same threshold on an honest mean.
             # The lin fusion now uses a weight that cannot see lin.
-            wq = base * np.sqrt(max(c["dif_energy"], 0.0))
+            wq = w if LEGACY_LIN else base * np.sqrt(max(c["dif_energy"], 0.0))
             lin_w += wq * c["lin"]
             tot_wq += wq
             dif_e += c["dif_energy"]

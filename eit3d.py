@@ -131,6 +131,26 @@ def make_cylinder(R=5.5, height=14.0, n_rings=7, nz=17, xscale=1.0, check=True):
     return mesh
 
 
+def make_cylinder_legacy(R=5.5, height=14.0, n_rings=7, nz=17, xscale=1.0):
+    """The PRE-FIX mesher, kept ONLY so the ablation can attribute changes.
+
+    This is defect 36 exactly as it was: 3-D Delaunay over the structured cloud,
+    then drop the exactly-flat tets, which tears the mesh into ~9300 hanging
+    faces. Do not use it for anything but the ablation.
+    """
+    d = _disk_points(R, n_rings, xscale)
+    zs = np.linspace(0, height, nz)
+    P = np.column_stack([np.tile(d, (nz, 1)), np.repeat(zs, len(d))])
+    tri = Delaunay(P, qhull_options="Qt Qbb Qc Qz")
+    tets = tri.simplices
+    v = P[tets]
+    vol = np.abs(np.einsum('ij,ij->i',
+                           np.cross(v[:, 1] - v[:, 0], v[:, 2] - v[:, 0]),
+                           v[:, 3] - v[:, 0])) / 6.0
+    tets = tets[vol > 1e-9 * (R * R * height)]
+    return MeshTet(P.T, tets.T)
+
+
 def _assert_conforming(mesh, expected_vol=None, tol=1e-9):
     """Fail loudly if the mesh is torn. See defect 37."""
     from collections import Counter

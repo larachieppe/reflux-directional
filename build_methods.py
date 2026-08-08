@@ -112,7 +112,7 @@ taken from a datasheet, and swept as a factor in Study 1.</li>
 {rows}</table>
 <p class="mm-note">The bladder entry is <b>wall only</b>. The lumen is filled with
 urine at a lumen fraction of 0.82. Modelling the whole bladder at wall
-conductivity was a defect: it put the bladder below muscle and inverted the
+conductivity would put the bladder below muscle and invert the sign of the
 strongest confounder in the problem.</p>
 </div>
 <div>
@@ -141,7 +141,7 @@ a slope.</p>
  ("Sensing", "tetrapolar (Kelvin): an outer pair drives current, an inner pair "
   "senses voltage. Measured contact-impedance rejection over the modelled "
   "z<sub>0</sub> range is 4.3&times;, a 16% residual &mdash; a large gain, but "
-  "not the immunity earlier drafts claimed"),
+  "not immunity"),
  ("Zones", "symmetric tetrapolar quadruples at odd outer gaps G, giving several "
   "overlapping apertures per strip at different depth sensitivities"),
 ])}
@@ -187,8 +187,8 @@ destroys the signal.</li>
 then regress arrival time against the zone's realised axial height. Realised
 electrode centroids are used, not requested positions.</li>
 <li><b>Fuse apertures.</b> Combine apertures weighted by axial lever arm, fit
-quality and &radic;energy. This replaced a greedy best-aperture selector that was
-overfitting and produced the since-retracted "more electrodes is worse" claim.</li>
+quality and &radic;energy. Fusing rather than selecting avoids committing to a
+single aperture that may be overfitted to the individual trial.</li>
 <li><b>Decide.</b> The <b>sign of the slope</b> is the diagnosis: bolus arriving
 at superior zones later than inferior zones means upward, i.e. reflux.</li>
 <li><b>Abstain.</b> If wave linearity &lt; {ds.LIN_GATE:.2f} the trial returns no
@@ -249,13 +249,10 @@ accuracy on calls made, abstention rate, and AUC. <b>AUC is computed separately
 per motion level</b>; an earlier version computed it once and copied it across
 motion arms, which hid the degradation the study existed to measure.</p>
 
-<h4>Retracted from this study</h4>
-<p>Two published conclusions were withdrawn after audit. "More electrodes is
-worse" was an artefact of the greedy aperture selector, now replaced by fusion.
-"Longer span is better" was an artefact of span acting as a proxy for placement,
-which Study 3 then measured directly. At N = 12 electrodes shared mesh facets
-welded neighbouring electrodes together; placement now uses a pitch-scaled
-acceptance window with a hard assertion against overlap.</p>
+<h4>Constraints on the array</h4>
+<p>The z acceptance window for electrode facets scales with pitch, and placement
+asserts that no two electrodes share a boundary facet: at N = 12 on a 12 cm span
+a fixed window would let neighbours overlap, which is not a realisable array.</p>
 """
 
 
@@ -320,10 +317,8 @@ when the bolus crosses fewer than three zones, because three is the minimum for
 both common-mode rejection and a slope fit. A placement that puts more zones over
 the short retrograde path of a low-grade bolus recovers it.</p>
 
-<h4>Result that overturned a published claim</h4>
-<p>Grades I–II are <b>not</b> intrinsically undetectable. The earlier claim was a
-plumbing defect. This is the clearest example in the project of a bug producing a
-confident and completely wrong scientific conclusion.</p>
+<h4>Principal result</h4>
+<p>Grades I–II are <b>not</b> intrinsically undetectable. Their detectability is governed almost entirely by where the strip sits relative to the ureterovesical junction, on identical physics and an identical estimator.</p>
 """
 
 

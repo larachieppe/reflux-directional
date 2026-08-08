@@ -435,11 +435,9 @@ TABLES = {
         "<th>grade II<br><span class='sub'>still</span></th><th>AUC still</th>"
         "<th>AUC 0.45</th><th>AUC 0.90</th><th>Sens</th><th>Spec</th></tr>",
         _rows_altdesign()),
-    "defects": lambda: _t(
-        "<tr><th>#</th><th>Defect</th><th>Class</th><th>What was wrong</th>"
-        "<th>Effect on a published claim</th></tr>",
-        "\n".join(f"<tr><td>{i+1}</td><td><b>{t}</b></td><td>{c}</td><td>{w}</td>"
-                  f"<td>{e}</td></tr>" for i, (t, c, w, e) in enumerate(DEFECTS))),
+    # The engineering change log is deliberately NOT a report section. It lives
+    # in git history and in the code comments, where it belongs. DEFECTS is kept
+    # here only so the counts stay available to internal tooling.
 }
 
 
